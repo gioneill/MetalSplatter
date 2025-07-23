@@ -5,9 +5,12 @@ import SwiftUI
 
 @main
 struct SampleApp: App {
+    @StateObject private var sharePlayIntegration = SharePlayIntegrationHelper()
+    
     var body: some Scene {
         WindowGroup("MetalSplatter Sample App", id: "main") {
             ContentView()
+                .environmentObject(sharePlayIntegration.sessionManager)
         }
 
 #if os(macOS)
@@ -21,6 +24,7 @@ struct SampleApp: App {
         ImmersiveSpace(for: ModelIdentifier.self) { modelIdentifier in
             CompositorLayer(configuration: ContentStageConfiguration()) { layerRenderer in
                 let renderer = VisionSceneRenderer(layerRenderer)
+                sharePlayIntegration.configureForRenderer(renderer)
                 Task {
                     do {
                         try await renderer.load(modelIdentifier.wrappedValue)

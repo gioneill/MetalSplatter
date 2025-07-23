@@ -35,6 +35,9 @@ class VisionSceneRenderer {
 
     let arSession: ARKitSession
     let worldTracking: WorldTrackingProvider
+    
+    var cameraSync: SharePlayCameraSync?
+    var sharePlaySessionManager: SharePlaySessionManager?
 
     init(_ layerRenderer: LayerRenderer) {
         self.layerRenderer = layerRenderer

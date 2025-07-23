@@ -1,0 +1,84 @@
+import Foundation
+import GroupActivities
+import UIKit
+import simd
+
+struct SplatViewingActivity: GroupActivity {
+    static let activityIdentifier = "com.metalsplatter.viewing"
+    
+    var metadata: GroupActivityMetadata {
+        var metadata = GroupActivityMetadata()
+        metadata.title = "View 3D Splat Together"
+        if let modelIdentifier = modelIdentifier {
+            metadata.subtitle = modelIdentifier.displayName
+        }
+        metadata.previewImage = UIImage(named: "splat-preview")?.cgImage
+        metadata.supportsContinuationOnTV = false
+        metadata.sceneAssociationBehavior = .content(modelIdentifier?.url?.absoluteString ?? "")
+        return metadata
+    }
+    
+    let modelIdentifier: ModelIdentifier?
+    
+    init(modelIdentifier: ModelIdentifier? = nil) {
+        self.modelIdentifier = modelIdentifier
+    }
+}
+
+enum SyncMessage: Codable {
+    case modelSelection(ModelIdentifier)
+    case cameraUpdate(position: SIMD3<Float>, rotation: simd_quatf, timestamp: TimeInterval)
+    case viewingStateUpdate(ViewingState)
+    case participantPointer(position: SIMD3<Float>, participantID: String)
+    case annotation(AnnotationMessage)
+    
+    struct ViewingState: Codable {
+        let isPlaying: Bool
+        let currentTime: TimeInterval
+        let renderingMode: String
+    }
+    
+    struct AnnotationMessage: Codable {
+        let id: String
+        let position: SIMD3<Float>
+        let text: String
+        let participantID: String
+        let timestamp: TimeInterval
+    }
+}
+
+extension SIMD3: Codable where Scalar: Codable {
+    public init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        let x = try container.decode(Scalar.self)
+        let y = try container.decode(Scalar.self)
+        let z = try container.decode(Scalar.self)
+        self.init(x, y, z)
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        try container.encode(x)
+        try container.encode(y)
+        try container.encode(z)
+    }
+}
+
+extension simd_quatf: Codable {
+    public init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        let x = try container.decode(Float.self)
+        let y = try container.decode(Float.self)
+        let z = try container.decode(Float.self)
+        let w = try container.decode(Float.self)
+        self.init(ix: x, iy: y, iz: z, r: w)
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        try container.encode(imag.x)
+        try container.encode(imag.y)
+        try container.encode(imag.z)
+        try container.encode(real)
+    }
+}
