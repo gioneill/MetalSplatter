@@ -109,7 +109,7 @@ struct ParticipantRow: View {
                 .fill(isNearby ? Color.blue : Color.green)
                 .frame(width: 8, height: 8)
             
-            Text(participant.id.prefix(8))
+            Text(String(participant.id.uuidString.prefix(8)))
                 .font(.caption)
                 .foregroundColor(.primary)
             

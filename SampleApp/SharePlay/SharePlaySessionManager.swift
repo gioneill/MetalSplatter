@@ -97,15 +97,13 @@ class SharePlaySessionManager: ObservableObject {
     private func updateParticipants(_ participants: Set<Participant>) {
         activeParticipants = participants
         
-        // Note: isNearbyWithLocalParticipant may not be available in current visionOS
-        // This is a placeholder for the visionOS 26 API
         nearbyParticipants = Set(participants.filter { participant in
-            // participant.isNearbyWithLocalParticipant && 
+            participant.isNearbyWithLocalParticipant &&
             participant.id != groupSession?.localParticipant.id
         })
         
         remoteParticipants = Set(participants.filter { participant in
-            // !participant.isNearbyWithLocalParticipant &&
+            !participant.isNearbyWithLocalParticipant &&
             participant.id != groupSession?.localParticipant.id
         })
         
@@ -121,9 +119,14 @@ class SharePlaySessionManager: ObservableObject {
         guard let messenger = messenger else { return }
         
         Task {
-            for await (message, context) in messenger.messages(of: SyncMessage.self) {
-                if let participant = context.source {
-                    await handleSyncMessage(message, from: participant)
+            for await (data, context) in messenger.messages(of: Data.self) {
+                do {
+                    let message = try JSONDecoder().decode(SyncMessage.self, from: data)
+                    if let participant = context.source {
+                        await handleSyncMessage(message, from: participant)
+                    }
+                } catch {
+                    logger.error("Failed to decode message: \(error)")
                 }
             }
         }
@@ -164,7 +167,9 @@ class SharePlaySessionManager: ObservableObject {
         
         Task {
             do {
-                try await messenger.send(.modelSelection(modelIdentifier))
+                let message = SyncMessage.modelSelection(modelIdentifier)
+                let data = try JSONEncoder().encode(message)
+                try await messenger.send(data)
                 logger.debug("Sent model selection: \(modelIdentifier.description)")
             } catch {
                 logger.error("Failed to send model selection: \(error)")
@@ -181,11 +186,13 @@ class SharePlaySessionManager: ObservableObject {
         
         Task {
             do {
-                try await messenger.send(.cameraUpdate(
+                let message = SyncMessage.cameraUpdate(
                     position: position,
                     rotation: rotation,
                     timestamp: currentTime
-                ))
+                )
+                let data = try JSONEncoder().encode(message)
+                try await messenger.send(data)
                 
                 logger.debug("Sent camera update")
             } catch {
@@ -199,10 +206,27 @@ class SharePlaySessionManager: ObservableObject {
         
         Task {
             do {
-                try await messenger.send(.viewingStateUpdate(state))
+                let message = SyncMessage.viewingStateUpdate(state)
+                let data = try JSONEncoder().encode(message)
+                try await messenger.send(data)
                 logger.debug("Sent viewing state update")
             } catch {
                 logger.error("Failed to send viewing state update: \(error)")
+            }
+        }
+    }
+    
+    func sendParticipantPointer(position: SIMD3<Float>, participantID: String) {
+        guard let messenger = messenger else { return }
+        
+        Task {
+            do {
+                let message = SyncMessage.participantPointer(position: position, participantID: participantID)
+                let data = try JSONEncoder().encode(message)
+                try await messenger.send(data)
+                logger.info("Sent participant pointer update")
+            } catch {
+                logger.error("Failed to send participant pointer: \(error)")
             }
         }
     }

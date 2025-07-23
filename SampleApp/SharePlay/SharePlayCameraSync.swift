@@ -3,6 +3,7 @@ import simd
 import Combine
 import GroupActivities
 import QuartzCore
+import SwiftUI
 
 class SharePlayCameraSync: ObservableObject {
     @Published var remoteViewports: [String: RemoteViewportState] = [:]
@@ -27,6 +28,7 @@ class SharePlayCameraSync: ObservableObject {
         setupNotifications()
     }
     
+    @MainActor
     func configure(with sessionManager: SharePlaySessionManager) {
         self.sessionManager = sessionManager
         sessionManager.delegate = self
@@ -53,7 +55,7 @@ class SharePlayCameraSync: ObservableObject {
     }
     
     private func updateRemoteParticipants(_ participants: Set<Participant>) {
-        let currentParticipantIDs = Set(participants.map { $0.id })
+        let currentParticipantIDs = Set(participants.map { $0.id.uuidString })
         let remoteParticipantIDs = Set(remoteViewports.keys)
         
         // Remove participants who left
@@ -62,6 +64,7 @@ class SharePlayCameraSync: ObservableObject {
         }
     }
     
+    @MainActor
     func sendCameraUpdate(position: SIMD3<Float>, rotation: simd_quatf) {
         guard let sessionManager = sessionManager else { return }
         
@@ -119,11 +122,11 @@ extension SharePlayCameraSync: SharePlaySessionDelegate {
         await MainActor.run {
             let isNearby = sessionManager?.nearbyParticipants.contains { $0.id == participant.id } ?? false
             
-            remoteViewports[participant.id] = RemoteViewportState(
+            remoteViewports[participant.id.uuidString] = RemoteViewportState(
                 position: position,
                 rotation: rotation,
                 timestamp: timestamp,
-                participantID: participant.id,
+                participantID: participant.id.uuidString,
                 isNearby: isNearby
             )
         }
@@ -163,27 +166,3 @@ extension SharePlayCameraSync: SharePlaySessionDelegate {
     }
 }
 
-// Helper functions for matrix operations
-func matrix4x4_rotation(radians: Float, axis: SIMD3<Float>) -> simd_float4x4 {
-    let unitAxis = normalize(axis)
-    let ct = cosf(radians)
-    let st = sinf(radians)
-    let ci = 1 - ct
-    let x = unitAxis.x, y = unitAxis.y, z = unitAxis.z
-    
-    return simd_float4x4(
-        SIMD4<Float>(    ct + x * x * ci, y * x * ci + z * st, z * x * ci - y * st, 0),
-        SIMD4<Float>(x * y * ci - z * st,     ct + y * y * ci, z * y * ci + x * st, 0),
-        SIMD4<Float>(x * z * ci + y * st, y * z * ci - x * st,     ct + z * z * ci, 0),
-        SIMD4<Float>(                  0,                   0,                   0, 1)
-    )
-}
-
-func matrix4x4_translation(_ x: Float, _ y: Float, _ z: Float) -> simd_float4x4 {
-    return simd_float4x4(
-        SIMD4<Float>(1, 0, 0, 0),
-        SIMD4<Float>(0, 1, 0, 0),
-        SIMD4<Float>(0, 0, 1, 0),
-        SIMD4<Float>(x, y, z, 1)
-    )
-}

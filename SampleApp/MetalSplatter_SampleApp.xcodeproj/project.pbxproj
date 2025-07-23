@@ -24,6 +24,15 @@
 		61791E162B42297B00302B57 /* MetalKitSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61791E142B42294700302B57 /* MetalKitSceneView.swift */; };
 		617E50C92B314C4800F99766 /* PLYIO in Frameworks */ = {isa = PBXBuildFile; productRef = 617E50C82B314C4800F99766 /* PLYIO */; };
 		617E50CB2B314C4800F99766 /* SplatIO in Frameworks */ = {isa = PBXBuildFile; productRef = 617E50CA2B314C4800F99766 /* SplatIO */; };
+		D7052D8C2E30A18700C31EEE /* SplatViewingActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D8A2E30A18700C31EEE /* SplatViewingActivity.swift */; };
+		D7052D8D2E30A18700C31EEE /* SharePlayIntegrationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D842E30A18700C31EEE /* SharePlayIntegrationHelper.swift */; };
+		D7052D8E2E30A18700C31EEE /* SharePlaySessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D862E30A18700C31EEE /* SharePlaySessionManager.swift */; };
+		D7052D8F2E30A18700C31EEE /* SharePlayModelSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D852E30A18700C31EEE /* SharePlayModelSync.swift */; };
+		D7052D902E30A18700C31EEE /* SharePlayStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D872E30A18700C31EEE /* SharePlayStatusView.swift */; };
+		D7052D912E30A18700C31EEE /* SpatialContentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D892E30A18700C31EEE /* SpatialContentManager.swift */; };
+		D7052D922E30A18700C31EEE /* NearbyParticipantHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D822E30A18700C31EEE /* NearbyParticipantHandler.swift */; };
+		D7052D932E30A18700C31EEE /* SharePlayTestingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D882E30A18700C31EEE /* SharePlayTestingView.swift */; };
+		D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +51,15 @@
 		61791E112B416DCF00302B57 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		61791E142B42294700302B57 /* MetalKitSceneView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MetalKitSceneView.swift; sourceTree = "<group>"; };
 		617E50B02B314BE200F99766 /* MetalSplatter SampleApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MetalSplatter SampleApp.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D7052D822E30A18700C31EEE /* NearbyParticipantHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyParticipantHandler.swift; sourceTree = "<group>"; };
+		D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePlayCameraSync.swift; sourceTree = "<group>"; };
+		D7052D842E30A18700C31EEE /* SharePlayIntegrationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePlayIntegrationHelper.swift; sourceTree = "<group>"; };
+		D7052D852E30A18700C31EEE /* SharePlayModelSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePlayModelSync.swift; sourceTree = "<group>"; };
+		D7052D862E30A18700C31EEE /* SharePlaySessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePlaySessionManager.swift; sourceTree = "<group>"; };
+		D7052D872E30A18700C31EEE /* SharePlayStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePlayStatusView.swift; sourceTree = "<group>"; };
+		D7052D882E30A18700C31EEE /* SharePlayTestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePlayTestingView.swift; sourceTree = "<group>"; };
+		D7052D892E30A18700C31EEE /* SpatialContentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialContentManager.swift; sourceTree = "<group>"; };
+		D7052D8A2E30A18700C31EEE /* SplatViewingActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatViewingActivity.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,6 +131,7 @@
 				610347E12B468A0B00693CE3 /* Util */,
 				610347E02B468A0000693CE3 /* Scene */,
 				610347DF2B4689DB00693CE3 /* Model */,
+				D7052D8B2E30A18700C31EEE /* SharePlay */,
 				61791DF82B41551F00302B57 /* Info.plist */,
 				61791DC32B41514300302B57 /* Assets.xcassets */,
 				61E3FD832AE5CB0200032652 /* Products */,
@@ -126,6 +145,22 @@
 				617E50B02B314BE200F99766 /* MetalSplatter SampleApp.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		D7052D8B2E30A18700C31EEE /* SharePlay */ = {
+			isa = PBXGroup;
+			children = (
+				D7052D822E30A18700C31EEE /* NearbyParticipantHandler.swift */,
+				D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */,
+				D7052D842E30A18700C31EEE /* SharePlayIntegrationHelper.swift */,
+				D7052D852E30A18700C31EEE /* SharePlayModelSync.swift */,
+				D7052D862E30A18700C31EEE /* SharePlaySessionManager.swift */,
+				D7052D872E30A18700C31EEE /* SharePlayStatusView.swift */,
+				D7052D882E30A18700C31EEE /* SharePlayTestingView.swift */,
+				D7052D892E30A18700C31EEE /* SpatialContentManager.swift */,
+				D7052D8A2E30A18700C31EEE /* SplatViewingActivity.swift */,
+			);
+			path = SharePlay;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -211,6 +246,15 @@
 				61791DEA2B4154FB00302B57 /* MatrixMathUtil.swift in Sources */,
 				610347DB2B46875700693CE3 /* VisionSceneRenderer.swift in Sources */,
 				610347D92B46864500693CE3 /* SampleApp.swift in Sources */,
+				D7052D8C2E30A18700C31EEE /* SplatViewingActivity.swift in Sources */,
+				D7052D8D2E30A18700C31EEE /* SharePlayIntegrationHelper.swift in Sources */,
+				D7052D8E2E30A18700C31EEE /* SharePlaySessionManager.swift in Sources */,
+				D7052D8F2E30A18700C31EEE /* SharePlayModelSync.swift in Sources */,
+				D7052D902E30A18700C31EEE /* SharePlayStatusView.swift in Sources */,
+				D7052D912E30A18700C31EEE /* SpatialContentManager.swift in Sources */,
+				D7052D922E30A18700C31EEE /* NearbyParticipantHandler.swift in Sources */,
+				D7052D932E30A18700C31EEE /* SharePlayTestingView.swift in Sources */,
+				D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */,
 				61791E102B41688000302B57 /* MetalKitSceneRenderer.swift in Sources */,
 				61791DE02B4154FB00302B57 /* SplatRenderer+ModelRenderer.swift in Sources */,
 				61791DE82B4154FB00302B57 /* ModelRenderer.swift in Sources */,

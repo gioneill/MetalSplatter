@@ -12,4 +12,22 @@ enum ModelIdentifier: Equatable, Hashable, Codable, CustomStringConvertible {
             "Sample Box"
         }
     }
+    
+    var displayName: String {
+        switch self {
+        case .gaussianSplat(let url):
+            url.lastPathComponent
+        case .sampleBox:
+            "Sample Box"
+        }
+    }
+    
+    var url: URL? {
+        switch self {
+        case .gaussianSplat(let url):
+            url
+        case .sampleBox:
+            nil
+        }
+    }
 }

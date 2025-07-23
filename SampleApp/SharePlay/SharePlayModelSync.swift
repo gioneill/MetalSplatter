@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import OSLog
 import GroupActivities
+import simd
 
 @MainActor
 class SharePlayModelSync: ObservableObject {
@@ -49,14 +50,14 @@ class SharePlayModelSync: ObservableObject {
         }
     }
     
-    func selectModel(_ modelIdentifier: ModelIdentifier) {
+    func selectModel(_ modelIdentifier: ModelIdentifier) async {
         currentModel = modelIdentifier
         
         // Broadcast to SharePlay participants
         sessionManager?.sendModelSelection(modelIdentifier)
         
         // Load locally
-        delegate?.shouldLoadModel(modelIdentifier)
+        await delegate?.shouldLoadModel(modelIdentifier)
         
         logger.info("Selected and broadcasting model: \(modelIdentifier.displayName)")
     }

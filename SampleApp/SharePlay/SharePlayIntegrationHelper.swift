@@ -56,7 +56,9 @@ class SharePlayIntegrationHelper: ObservableObject {
     
     private func startPerformanceMonitoring() {
         performanceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.updatePerformanceMetrics()
+            Task { @MainActor in
+                self?.updatePerformanceMetrics()
+            }
         }
     }
     
@@ -67,7 +69,7 @@ class SharePlayIntegrationHelper: ObservableObject {
         performanceMetrics.remoteParticipants = sessionManager.remoteParticipants.count
         
         // Memory usage (simplified)
-        let memoryInfo = mach_task_basic_info()
+        var memoryInfo = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
         
         let kerr: kern_return_t = withUnsafeMutablePointer(to: &memoryInfo) {
@@ -93,35 +95,36 @@ class SharePlayIntegrationHelper: ObservableObject {
     func optimizePerformance() {
         // Optimization strategies based on current conditions
         
-        if performanceMetrics.networkLatencyMs > 150 {
+        if self.performanceMetrics.networkLatencyMs > 150 {
             // High latency - reduce update frequency
-            logger.warning("High network latency detected (\(performanceMetrics.networkLatencyMs)ms), reducing update frequency")
+            logger.warning("High network latency detected (\(self.performanceMetrics.networkLatencyMs)ms), reducing update frequency")
             // Implement adaptive update rates
         }
         
-        if performanceMetrics.memoryUsageMB > 500 {
+        if self.performanceMetrics.memoryUsageMB > 500 {
             // High memory usage - clean up unused resources
-            logger.warning("High memory usage detected (\(performanceMetrics.memoryUsageMB)MB), cleaning up resources")
+            logger.warning("High memory usage detected (\(self.performanceMetrics.memoryUsageMB)MB), cleaning up resources")
             cleanupResources()
         }
         
-        if performanceMetrics.totalParticipants > 8 {
+        if self.performanceMetrics.totalParticipants > 8 {
             // Many participants - optimize rendering
-            logger.info("Many participants (\(performanceMetrics.totalParticipants)), optimizing rendering")
+            logger.info("Many participants (\(self.performanceMetrics.totalParticipants)), optimizing rendering")
             optimizeForManyParticipants()
         }
     }
     
     private func cleanupResources() {
         // Clean up unused spatial content
-        spatialContentManager.participantPointers.removeAll { (participantID, _) in
-            !sessionManager.activeParticipants.contains { $0.id == participantID }
+        let activeParticipantIDs = Set(sessionManager.activeParticipants.map { $0.id.uuidString })
+        spatialContentManager.participantPointers = spatialContentManager.participantPointers.filter { (participantID, _) in
+            activeParticipantIDs.contains(participantID)
         }
         
         // Clean up old annotations
         let cutoffTime = CACurrentMediaTime() - 300 // 5 minutes
-        spatialContentManager.sharedAnnotations.removeAll { (_, annotation) in
-            annotation.annotation.timestamp < cutoffTime
+        spatialContentManager.sharedAnnotations = spatialContentManager.sharedAnnotations.filter { (_, annotation) in
+            annotation.annotation.timestamp >= cutoffTime
         }
     }
     
@@ -156,7 +159,9 @@ class SharePlayIntegrationHelper: ObservableObject {
     
     deinit {
         performanceTimer?.invalidate()
-        sessionManager.endSession()
+        Task { @MainActor in
+            sessionManager.endSession()
+        }
     }
 }
 

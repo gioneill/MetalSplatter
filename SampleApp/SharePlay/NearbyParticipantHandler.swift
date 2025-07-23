@@ -4,6 +4,7 @@ import ARKit
 import RealityKit
 import Combine
 import OSLog
+import QuartzCore
 
 @MainActor
 class NearbyParticipantHandler: ObservableObject {
@@ -133,13 +134,10 @@ class NearbyParticipantHandler: ObservableObject {
         
         do {
             let anchor = WorldAnchor(originFromAnchorTransform: transform, sharedWithNearbyParticipants: true)
-            try await arSession.addAnchor(anchor)
+            // World anchors are automatically tracked when created, no need to explicitly add to session
             
             logger.info("Created shared world anchor: \(anchor.id.uuidString)")
             return anchor
-        } catch {
-            logger.error("Failed to create shared world anchor: \(error)")
-            return nil
         }
     }
     #endif
@@ -163,18 +161,18 @@ class NearbyParticipantHandler: ObservableObject {
                 participantPose: nil // Would come from participant tracking
             )
             
-            participantStates[participant.id] = state
+            participantStates[participant.id.uuidString] = state
         }
         
         // Remove states for participants who left
-        let currentParticipantIDs = Set(allParticipants.map { $0.id })
+        let currentParticipantIDs = Set(allParticipants.map { $0.id.uuidString })
         for participantID in participantStates.keys {
             if !currentParticipantIDs.contains(participantID) {
                 participantStates.removeValue(forKey: participantID)
             }
         }
         
-        logger.info("Updated participant states - Nearby: \(nearbyParticipants.count), Remote: \(remoteParticipants.count)")
+//        logger.info("Updated participant states - Nearby: \(nearbyParticipants.count), Remote: \(remoteParticipants.count)")
     }
     
     func getPositionForContentRelativeToParticipant(_ participantID: String, offset: SIMD3<Float> = SIMD3<Float>(0, 0, 0)) -> simd_float4x4? {
@@ -218,17 +216,14 @@ class NearbyParticipantHandler: ObservableObject {
     }
     
     func handleParticipantGesture(participantID: String, gestureType: ParticipantGesture, position: SIMD3<Float>) {
-        logger.info("Participant \(participantID) performed gesture: \(gestureType) at \(position)")
+        logger.info("Participant \(participantID) performed gesture: \(gestureType.rawValue) at \(position)")
         
         // Send gesture information to other participants
         if let sessionManager = sessionManager {
             Task {
                 // This would be implemented as part of the gesture synchronization system
                 // For now, we'll use the participant pointer message
-                try? await sessionManager.messenger?.send(.participantPointer(
-                    position: position,
-                    participantID: participantID
-                ))
+                sessionManager.sendParticipantPointer(position: position, participantID: participantID)
             }
         }
         
