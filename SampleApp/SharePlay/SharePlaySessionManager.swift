@@ -76,7 +76,9 @@ class SharePlaySessionManager: ObservableObject {
         session.$activeParticipants
             .receive(on: DispatchQueue.main)
             .sink { [weak self] participants in
-                self?.updateParticipants(participants)
+                Task {
+                    await self?.updateParticipants(participants)
+                }
             }
             .store(in: &cancellables)
         
@@ -94,7 +96,7 @@ class SharePlaySessionManager: ObservableObject {
         #endif
     }
     
-    private func updateParticipants(_ participants: Set<Participant>) {
+    private func updateParticipants(_ participants: Set<Participant>) async {
         activeParticipants = participants
         
         nearbyParticipants = Set(participants.filter { participant in
@@ -109,7 +111,7 @@ class SharePlaySessionManager: ObservableObject {
         
         logger.info("Updated participants - Total: \(participants.count), Nearby: \(self.nearbyParticipants.count), Remote: \(self.remoteParticipants.count)")
         
-        delegate?.participantsDidUpdate(
+        await delegate?.participantsDidUpdate(
             nearby: nearbyParticipants,
             remote: remoteParticipants
         )
@@ -122,9 +124,8 @@ class SharePlaySessionManager: ObservableObject {
             for await (data, context) in messenger.messages(of: Data.self) {
                 do {
                     let message = try JSONDecoder().decode(SyncMessage.self, from: data)
-                    if let participant = context.source {
-                        await handleSyncMessage(message, from: participant)
-                    }
+                    let participant = context.source
+                    await handleSyncMessage(message, from: participant)
                 } catch {
                     logger.error("Failed to decode message: \(error)")
                 }
@@ -227,6 +228,21 @@ class SharePlaySessionManager: ObservableObject {
                 logger.info("Sent participant pointer update")
             } catch {
                 logger.error("Failed to send participant pointer: \(error)")
+            }
+        }
+    }
+    
+    func sendAnnotation(_ annotation: SyncMessage.AnnotationMessage) {
+        guard let messenger = messenger else { return }
+        
+        Task {
+            do {
+                let message = SyncMessage.annotation(annotation)
+                let data = try JSONEncoder().encode(message)
+                try await messenger.send(data)
+                logger.info("Sent annotation")
+            } catch {
+                logger.error("Failed to send annotation: \(error)")
             }
         }
     }

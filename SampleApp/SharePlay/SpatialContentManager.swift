@@ -4,6 +4,7 @@ import ARKit
 import GroupActivities
 import Combine
 import OSLog
+import SwiftUI
 
 @MainActor
 class SpatialContentManager: ObservableObject {
@@ -118,7 +119,7 @@ class SpatialContentManager: ObservableObject {
         
         // Create visual representation based on participant type
         let mesh: MeshResource
-        let material: Material
+        let material: RealityKit.Material
         
         if state.isNearby {
             // Blue indicator for nearby participants
@@ -156,7 +157,7 @@ class SpatialContentManager: ObservableObject {
         // Position indicator slightly above participant's head
         let offset = SIMD3<Float>(0, 0.3, 0)
         
-        if let transform = nearbyParticipantHandler?.getPositionForContentRelativeToParticipant(state.participant.id, offset: offset) {
+        if let transform = nearbyParticipantHandler?.getPositionForContentRelativeToParticipant(state.participant.id.uuidString, offset: offset) {
             indicator.transform = Transform(matrix: transform)
         } else {
             // Fallback positioning
@@ -196,8 +197,8 @@ class SpatialContentManager: ObservableObject {
         
         // Create a small sphere as pointer
         let mesh = MeshResource.generateSphere(radius: 0.02)
-        let color: UIColor = isNearby ? .systemBlue : .systemGreen
-        let material = UnlitMaterial(color: color)
+        let color: Color = isNearby ? .blue : .green
+        let material = UnlitMaterial(color: UIColor(color))
         
         let modelComponent = ModelComponent(mesh: mesh, materials: [material])
         pointer.components.set(modelComponent)
@@ -210,7 +211,7 @@ class SpatialContentManager: ObservableObject {
             duration: 0.5
         )
         let animationResource = try! AnimationResource.generate(with: scaleAnimation)
-        pointer.playAnimation(animationResource.repeat(mode: .mirrored))
+        pointer.playAnimation(animationResource.repeat())
         
         return pointer
     }
@@ -236,8 +237,8 @@ class SpatialContentManager: ObservableObject {
         
         // Create text mesh (simplified - in reality you'd use TextKit or similar)
         let textMesh = MeshResource.generateBox(size: 0.1) // Placeholder
-        let textColor: UIColor = isNearby ? .systemBlue : .systemGreen
-        let material = UnlitMaterial(color: textColor)
+        let textColor: Color = isNearby ? .blue : .green
+        let material = UnlitMaterial(color: UIColor(textColor))
         
         let modelComponent = ModelComponent(mesh: textMesh, materials: [material])
         entity.components.set(modelComponent)
@@ -258,7 +259,7 @@ class SpatialContentManager: ObservableObject {
         for (anchorID, anchor) in anchors {
             // Example: Place a shared marker at each anchor
             // In a real app, this might be interactive content, annotations, etc.
-            logger.debug("World anchor \(anchorID) at transform: \(anchor.originFromAnchorTransform)")
+            logger.debug("World anchor \(anchorID) updated")
         }
     }
     
