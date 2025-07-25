@@ -7,7 +7,8 @@
       "Bash(timeout:*)",
       "Bash(git checkout:*)",
       "Bash(DEVELOPER_DIR=\"/Applications/Xcode-26.0.0-Beta.4.app/Contents/Developer\" xcodebuild -project MetalSplatter_SampleApp.xcodeproj -scheme \"MetalSplatter SampleApp\" -destination 'platform=visionOS Simulator,name=Apple Vision Pro' build)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "WebFetch(domain:developer.apple.com)"
     ],
     "deny": []
   }
