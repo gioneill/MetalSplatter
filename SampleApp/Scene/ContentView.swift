@@ -96,6 +96,17 @@ struct ContentView: View {
             .disabled(immersiveSpaceIsShown)
 #endif
 
+            Button("Show RV Sample") {
+                if let rvModel = ModelIdentifier.rvSample {
+                    openWindow(value: rvModel)
+                }
+            }
+            .padding()
+            .buttonStyle(.borderedProminent)
+#if os(visionOS)
+            .disabled(immersiveSpaceIsShown)
+#endif
+
             Spacer()
 
 #if os(visionOS)
@@ -112,3 +123,9 @@ struct ContentView: View {
         }
     }
 }
+
+#if os(visionOS) && DEBUG
+#Preview {
+    ContentView()
+}
+#endif
