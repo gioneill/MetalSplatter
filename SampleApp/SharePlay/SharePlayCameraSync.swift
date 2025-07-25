@@ -90,6 +90,14 @@ class SharePlayCameraSync: ObservableObject {
         return baseTransform * translationMatrix * rotationMatrix
     }
     
+    func updateSyncedCamera(position: SIMD3<Float>, rotation: simd_quatf) {
+        self.syncedPosition = position
+        // Convert quaternion to angle for backwards compatibility
+        // In a real implementation, you'd update this to use quaternions throughout
+        let angle = rotation.angle
+        self.syncedRotation = Angle(radians: Double(angle))
+    }
+    
     func getRemoteParticipantTransforms() -> [(participantID: String, transform: simd_float4x4, isNearby: Bool)] {
         return remoteViewports.compactMap { (participantID, state) in
             let rotationMatrix = simd_float4x4(state.rotation)
@@ -128,6 +136,19 @@ extension SharePlayCameraSync: SharePlaySessionDelegate {
                 timestamp: timestamp,
                 participantID: participant.id.uuidString,
                 isNearby: isNearby
+            )
+            
+            // Update synced camera state for all participants
+            updateSyncedCamera(position: position, rotation: rotation)
+            
+            // Notify renderer of camera update
+            NotificationCenter.default.post(
+                name: NSNotification.Name("SharePlayCameraUpdate"),
+                object: nil,
+                userInfo: [
+                    "position": position,
+                    "rotation": rotation
+                ]
             )
         }
     }

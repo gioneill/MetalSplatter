@@ -8,6 +8,7 @@ import SampleBoxRenderer
 import simd
 import Spatial
 import SwiftUI
+import Combine
 
 extension LayerRenderer.Clock.Instant.Duration {
     var timeInterval: TimeInterval {
@@ -16,7 +17,52 @@ extension LayerRenderer.Clock.Instant.Duration {
     }
 }
 
-class VisionSceneRenderer {
+struct Camera {
+    var position: SIMD3<Float>
+    var rotation: simd_quatf
+    var scale: Float
+    
+    init(position: SIMD3<Float> = SIMD3<Float>(0, 0, -1.5),
+         rotation: simd_quatf = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0)),
+         scale: Float = 1.0) {
+        self.position = position
+        self.rotation = rotation
+        self.scale = scale
+    }
+    
+    var transform: simd_float4x4 {
+        let translationMatrix = simd_float4x4(matrix4x4_translation(position.x, position.y, position.z))
+        let rotationMatrix = simd_float4x4(rotation)
+        let scaleMatrix = matrix4x4_scale(scale, scale, scale)
+        
+        return translationMatrix * rotationMatrix * scaleMatrix
+    }
+    
+    mutating func translate(by delta: SIMD3<Float>) {
+        position += delta
+    }
+    
+    mutating func rotate(by quaternion: simd_quatf) {
+        rotation = quaternion * rotation
+    }
+    
+    mutating func setScale(_ newScale: Float) {
+        scale = max(0.1, min(10.0, newScale)) // Clamp between 0.1 and 10.0
+    }
+}
+
+// Matrix helper functions
+
+func matrix4x4_scale(_ x: Float, _ y: Float, _ z: Float) -> simd_float4x4 {
+    return simd_float4x4([
+        SIMD4<Float>(x, 0, 0, 0),
+        SIMD4<Float>(0, y, 0, 0),
+        SIMD4<Float>(0, 0, z, 0),
+        SIMD4<Float>(0, 0, 0, 1)
+    ])
+}
+
+class VisionSceneRenderer: ObservableObject {
     private static let log =
         Logger(subsystem: Bundle.main.bundleIdentifier!,
                category: "VisionSceneRenderer")
@@ -30,8 +76,7 @@ class VisionSceneRenderer {
 
     let inFlightSemaphore = DispatchSemaphore(value: Constants.maxSimultaneousRenders)
 
-    var lastRotationUpdateTimestamp: Date? = nil
-    var rotation: Angle = .zero
+    @Published var camera = Camera()
 
     let arSession: ARKitSession
     let worldTracking: WorldTrackingProvider
@@ -46,9 +91,27 @@ class VisionSceneRenderer {
 
         worldTracking = WorldTrackingProvider()
         arSession = ARKitSession()
+        
+        setupCameraSync()
+    }
+    
+    private func setupCameraSync() {
+        // Listen for camera updates from SharePlay
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("SharePlayCameraUpdate"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            if let userInfo = notification.userInfo,
+               let position = userInfo["position"] as? SIMD3<Float>,
+               let rotation = userInfo["rotation"] as? simd_quatf {
+                self?.camera.position = position
+                self?.camera.rotation = rotation
+            }
+        }
     }
 
-    func load(_ model: ModelIdentifier?) async throws {
+    func load(_ model: ModelIdentifier?, cameraPosition: SIMD3<Float>? = nil) async throws {
         guard model != self.model else { return }
         self.model = model
 
@@ -63,6 +126,14 @@ class VisionSceneRenderer {
                                           maxSimultaneousRenders: Constants.maxSimultaneousRenders)
             try await splat.read(from: url)
             modelRenderer = splat
+            
+            // Set custom camera position if provided
+            if let position = cameraPosition {
+                camera.position = position
+            } else {
+                // Default position for gaussian splats
+                camera.position = SIMD3<Float>(0, 0, -2.5)
+            }
         case .sampleBox:
             modelRenderer = try! SampleBoxRenderer(device: device,
                                                    colorFormat: layerRenderer.configuration.colorFormat,
@@ -70,6 +141,14 @@ class VisionSceneRenderer {
                                                    sampleCount: 1,
                                                    maxViewCount: layerRenderer.properties.viewCount,
                                                    maxSimultaneousRenders: Constants.maxSimultaneousRenders)
+            
+            // Set custom camera position if provided
+            if let position = cameraPosition {
+                camera.position = position
+            } else {
+                // Default position for sample box
+                camera.position = SIMD3<Float>(0, 0, -1.5)
+            }
         case .none:
             break
         }
@@ -90,11 +169,15 @@ class VisionSceneRenderer {
             renderThread.start()
         }
     }
+    
+    func syncCameraState() {
+        // Send camera update through SharePlay
+        Task { @MainActor in
+            cameraSync?.sendCameraUpdate(position: camera.position, rotation: camera.rotation)
+        }
+    }
 
     private func viewports(drawable: LayerRenderer.Drawable, deviceAnchor: DeviceAnchor?) -> [ModelRendererViewportDescriptor] {
-        let rotationMatrix = matrix4x4_rotation(radians: Float(rotation.radians),
-                                                axis: Constants.rotationAxis)
-        let translationMatrix = matrix4x4_translation(0.0, 0.0, Constants.modelCenterZ)
         // Turn common 3D GS PLY files rightside-up. This isn't generally meaningful, it just
         // happens to be a useful default for the most common datasets at the moment.
         let commonUpCalibration = matrix4x4_rotation(radians: .pi, axis: SIMD3<Float>(0, 0, 1))
@@ -108,20 +191,11 @@ class VisionSceneRenderer {
                                    y: Int(view.textureMap.viewport.height))
             return ModelRendererViewportDescriptor(viewport: view.textureMap.viewport,
                                                    projectionMatrix: projectionMatrix,
-                                                   viewMatrix: userViewpointMatrix * translationMatrix * rotationMatrix * commonUpCalibration,
+                                                   viewMatrix: userViewpointMatrix * camera.transform * commonUpCalibration,
                                                    screenSize: screenSize)
         }
     }
 
-    private func updateRotation() {
-        let now = Date()
-        defer {
-            lastRotationUpdateTimestamp = now
-        }
-
-        guard let lastRotationUpdateTimestamp else { return }
-        rotation += Constants.rotationPerSecond * now.timeIntervalSince(lastRotationUpdateTimestamp)
-    }
 
     func renderFrame() {
         guard let frame = layerRenderer.queryNextFrame() else { return }
@@ -151,8 +225,6 @@ class VisionSceneRenderer {
         commandBuffer.addCompletedHandler { (_ commandBuffer)-> Swift.Void in
             semaphore.signal()
         }
-
-        updateRotation()
 
         let viewports = self.viewports(drawable: drawable, deviceAnchor: deviceAnchor)
 
