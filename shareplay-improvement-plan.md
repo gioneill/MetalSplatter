@@ -1,159 +1,119 @@
 # SharePlay Improvement Plan
 
-This document outlines the plan to improve the SharePlay experience by implementing intuitive hand gesture controls for manipulating the 3D scene.
+This document outlines the plan to improve the SharePlay experience by implementing intuitive hand gesture controls for manipulating the 3D scene and providing a more intelligent user experience.
 
-## Project Structure
+## Current Architecture
 
-To keep the code organized, we'll follow this structure:
+The rendering and scene management logic is primarily handled by `VisionSceneRenderer`, which is an `ObservableObject`. This class is responsible for:
 
-```
-/Sources
-|--/Camera.swift
-|--/ContentView.swift
-|--/ImmersiveView.swift
-|--/Models/
-|   |--/Camera.swift
-|   |--/Splat.swift
-|--/Renderers/
-|   |--/MetalKitRenderer.swift
-|   |--/VisionSceneRenderer.swift
-```
+- Loading and managing 3D models (`ModelRenderer`).
+- Managing the user's viewpoint via a `Camera` struct.
+- Running the main render loop.
+- Synchronizing camera state with other participants via SharePlay.
 
-## Step 1: Create the `Camera` struct
-
-The `Camera` struct will manage the camera's position and orientation.
+The `Camera` struct is defined directly within `VisionSceneRenderer.swift` and manages the position, rotation, and scale of the user's viewpoint.
 
 ```swift
-// In Camera.swift
-
-import simd
+// In VisionSceneRenderer.swift
 
 struct Camera {
-    var transform: simd_float4x4 = matrix_identity_float4x4
+    var position: SIMD3<Float>
+    var rotation: simd_quatf
+    var scale: Float
 
-    var position: SIMD3<Float> {
-        get {
-            return SIMD3<Float>(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
-        }
-        set(newValue) {
-            transform.columns.3.x = newValue.x
-            transform.columns.3.y = newValue.y
-            transform.columns.3.z = newValue.z
-        }
-    }
-
-    // ... other camera properties and methods
+    // ... methods for manipulating the transform ...
 }
 ```
 
-## Step 2: Create the `Splat` class
+## Implemented Features
 
-The `Splat` class will be responsible for loading and rendering the 3D model.
+### 1. Camera-based Rendering
+The `VisionSceneRenderer` no longer uses a simple, automatic rotation. Instead, it uses the `camera.transform` property to generate the view matrix for rendering. This allows for dynamic, user-controlled movement.
 
-```swift
-// In Splat.swift
+### 2. SharePlay Camera Synchronization
+The `SharePlayCameraSync` class and `VisionSceneRenderer` work together to synchronize the camera state across all devices in a SharePlay session. Updates are sent when the local user moves, and the renderer listens for notifications to update the camera when a remote user moves.
 
-import Metal
-import MetalKit
+## Future Work: Implementation Plan
 
-class Splat {
-    // ... properties for managing the 3D model
+### Step 1: Implement Gesture Controls
 
-    func render(viewMatrix: simd_float4x4, projectionMatrix: simd_float4x4, to commandBuffer: MTLCommandBuffer) {
-        // ... rendering logic
-    }
-}
-```
+We will use SwiftUI's gesture system to handle hand tracking input and manipulate the camera. The gestures will be added to the main content view and will interact with the `VisionSceneRenderer` instance.
 
-## Step 3: Create the `Scene` class
-
-The `Scene` class will manage the `Splat` object and the `Camera` object.
+- **One-Handed Pinch/Drag:** Translate the camera's position in the X/Y plane.
+- **Two-Handed Pinch/Spread:** Scale the scene (zoom in/out) by modifying the `camera.scale` property.
 
 ```swift
-// In Scene.swift
+// In a SwiftUI View (e.g., ContentView or ImmersiveView)
 
-import Foundation
+@StateObject private var renderer: VisionSceneRenderer
+// ...
 
-class Scene {
-    let splat: Splat
-    var camera: Camera
-
-    init(device: MTLDevice) {
-        self.splat = Splat(device: device)
-        self.camera = Camera()
-    }
-
-    func update(at time: TimeInterval) {
-        // ... update logic for the scene
-    }
-}
-```
-
-## Step 4: Update the Renderers
-
-The `MetalKitSceneRenderer` and `VisionSceneRenderer` will use the `Scene` class to render the scene.
-
-```swift
-// In MetalKitSceneRenderer.swift
-
-class MetalKitSceneRenderer {
-    let device: MTLDevice
-    let scene: Scene
-
-    init(device: MTLDevice) {
-        self.device = device
-        self.scene = Scene(device: device)
-    }
-
-    func draw(in view: MTKView) {
-        // ... rendering logic using the scene
-    }
-}
-```
-
-## Step 5: Implement Gesture Controls
-
-We'll use a `DragGesture` to handle the hand tracking and update the camera's position and orientation.
-
-```swift
-// In ContentView.swift
-
-struct ContentView: View {
-    @State private var scene = Scene(device: MTLCreateSystemDefaultDevice()!)
-
-    var body: some View {
-        ImmersiveView(scene: $scene)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        // ... update camera based on gesture
-                    }
-            )
-    }
-}
-```
-
-## Step 6: Implement UI Controls
-
-We'll add a button to reset the camera's position.
-
-```swift
-// In ContentView.swift
-
-struct ContentView: View {
-    @State private var scene = Scene(device: MTLCreateSystem-default-device()!)
-
-    var body: some View {
-        ZStack {
-            ImmersiveView(scene: $scene)
-            VStack {
-                Spacer()
-                Button("Reset View") {
-                    // ... reset camera position
+var body: some View {
+    ImmersiveView(renderer: renderer)
+        .gesture(
+            // Gesture for translation
+            DragGesture()
+                .onChanged { value in
+                    // Calculate translation delta
+                    // renderer.camera.translate(by: delta)
+                    // renderer.syncCameraState()
                 }
-                .padding()
+        )
+        .gesture(
+            // Gesture for scaling (e.g., MagnifyGesture)
+            MagnifyGesture()
+                .onChanged { value in
+                    // renderer.camera.setScale(value.magnification)
+                    // renderer.syncCameraState()
+                }
+        )
+}
+```
+
+### Step 2: Implement UI Controls
+
+A simple UI control will be added to allow the user to reset the camera's position and orientation to its initial state.
+
+```swift
+// In a SwiftUI View
+
+@StateObject private var renderer: VisionSceneRenderer
+// ...
+
+var body: some View {
+    ZStack {
+        ImmersiveView(renderer: renderer)
+        VStack {
+            Spacer()
+            Button("Reset View") {
+                // renderer.resetCamera()
+                // renderer.syncCameraState()
             }
+            .padding()
         }
     }
+}
+```
+
+### Step 3: Calculate Intelligent Starting Position
+
+To improve the initial user experience, we will calculate the centroid of the loaded 3D model and use it to set the initial camera position. This will place the user in a "center of interest" rather than at the world origin.
+
+This logic will be added to the `load` method in `VisionSceneRenderer.swift`.
+
+```swift
+// In VisionSceneRenderer.swift
+
+func load(_ model: ModelIdentifier?, ...) async throws {
+    // ... after loading the splat data ...
+    
+    // 1. Calculate the centroid of all points in the model
+    let centroid = calculateCentroid(of: splat.points)
+    
+    // 2. Set the initial camera position at an offset from the centroid
+    let cameraOffset = SIMD3<Float>(0, 0.5, 2.0) // Example offset
+    self.camera.position = centroid + cameraOffset
+    
+    // ...
 }
 ```
