@@ -47,22 +47,7 @@ enum SyncMessage: Codable {
     }
 }
 
-extension SIMD3: Codable where Scalar: Codable {
-    public init(from decoder: Decoder) throws {
-        var container = try decoder.unkeyedContainer()
-        let x = try container.decode(Scalar.self)
-        let y = try container.decode(Scalar.self)
-        let z = try container.decode(Scalar.self)
-        self.init(x, y, z)
-    }
-    
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.unkeyedContainer()
-        try container.encode(x)
-        try container.encode(y)
-        try container.encode(z)
-    }
-}
+// SIMD3 already conforms to Codable in modern Swift - extension removed to avoid conflict
 
 extension simd_quatf: Codable {
     public init(from decoder: Decoder) throws {

@@ -8,7 +8,8 @@
       "Bash(git checkout:*)",
       "Bash(DEVELOPER_DIR=\"/Applications/Xcode-26.0.0-Beta.4.app/Contents/Developer\" xcodebuild -project MetalSplatter_SampleApp.xcodeproj -scheme \"MetalSplatter SampleApp\" -destination 'platform=visionOS Simulator,name=Apple Vision Pro' build)",
       "Bash(grep:*)",
-      "WebFetch(domain:developer.apple.com)"
+      "WebFetch(domain:developer.apple.com)",
+      "Bash(/Applications/Xcode-26.0.0-Beta.4.app/Contents/Developer/usr/bin/xcodebuild -project MetalSplatter_SampleApp.xcodeproj -scheme \"MetalSplatter SampleApp\" -destination 'platform=visionOS Simulator,OS=26.0,name=Apple Vision Pro 4K' build)"
     ],
     "deny": []
   }

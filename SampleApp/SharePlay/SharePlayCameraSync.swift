@@ -10,7 +10,7 @@ class SharePlayCameraSync: ObservableObject {
     @Published var syncedRotation: Angle = .zero
     @Published var syncedPosition: SIMD3<Float> = SIMD3<Float>(0, 0, -1.5)
     
-    private var sessionManager: SharePlaySessionManager?
+    private weak var sessionManager: SharePlaySessionManager?
     private var cancellables = Set<AnyCancellable>()
     
     private var lastSyncTime: TimeInterval = 0

@@ -31,7 +31,7 @@ struct Camera {
     }
     
     var transform: simd_float4x4 {
-        let translationMatrix = simd_float4x4(matrix4x4_translation(position.x, position.y, position.z))
+        let translationMatrix = matrix4x4_translation(position.x, position.y, position.z)
         let rotationMatrix = simd_float4x4(rotation)
         let scaleMatrix = matrix4x4_scale(scale, scale, scale)
         
@@ -135,12 +135,17 @@ class VisionSceneRenderer: ObservableObject {
                 camera.position = SIMD3<Float>(0, 0, -2.5)
             }
         case .sampleBox:
-            modelRenderer = try! SampleBoxRenderer(device: device,
-                                                   colorFormat: layerRenderer.configuration.colorFormat,
-                                                   depthFormat: layerRenderer.configuration.depthFormat,
-                                                   sampleCount: 1,
-                                                   maxViewCount: layerRenderer.properties.viewCount,
-                                                   maxSimultaneousRenders: Constants.maxSimultaneousRenders)
+            do {
+                modelRenderer = try SampleBoxRenderer(device: device,
+                                                      colorFormat: layerRenderer.configuration.colorFormat,
+                                                      depthFormat: layerRenderer.configuration.depthFormat,
+                                                      sampleCount: 1,
+                                                      maxViewCount: layerRenderer.properties.viewCount,
+                                                      maxSimultaneousRenders: Constants.maxSimultaneousRenders)
+            } catch {
+                Self.log.error("Failed to create SampleBoxRenderer: \(error)")
+                throw error
+            }
             
             // Set custom camera position if provided
             if let position = cameraPosition {
@@ -162,19 +167,18 @@ class VisionSceneRenderer: ObservableObject {
                 fatalError("Failed to initialize ARSession")
             }
 
-            let renderThread = Thread {
-                self.renderLoop()
+            let renderThread = Thread { [weak self] in
+                self?.renderLoop()
             }
             renderThread.name = "Render Thread"
             renderThread.start()
         }
     }
     
+    @MainActor
     func syncCameraState() {
         // Send camera update through SharePlay
-        Task { @MainActor in
-            cameraSync?.sendCameraUpdate(position: camera.position, rotation: camera.rotation)
-        }
+        cameraSync?.sendCameraUpdate(position: camera.position, rotation: camera.rotation)
     }
 
     private func viewports(drawable: LayerRenderer.Drawable, deviceAnchor: DeviceAnchor?) -> [ModelRendererViewportDescriptor] {
@@ -210,7 +214,8 @@ class VisionSceneRenderer: ObservableObject {
             fatalError("Failed to create command buffer")
         }
 
-        guard let drawable = frame.queryDrawable() else { return }
+        let drawables = frame.queryDrawables()
+        guard let drawable = drawables.first else { return }
 
         _ = inFlightSemaphore.wait(timeout: DispatchTime.distantFuture)
 
@@ -261,6 +266,10 @@ class VisionSceneRenderer: ObservableObject {
                 }
             }
         }
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 }
 
