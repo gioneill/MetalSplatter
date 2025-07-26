@@ -12,6 +12,9 @@ struct SampleApp: App {
             ContentView()
                 .environmentObject(sharePlayIntegration.sessionManager)
         }
+#if os(visionOS)
+        .windowResizability(.contentSize)
+#endif
 
 #if os(macOS)
         WindowGroup(for: ModelIdentifier.self) { modelIdentifier in

@@ -49,12 +49,9 @@ struct ContentView: View {
 
     @ViewBuilder
     var mainView: some View {
-        VStack {
-            Spacer()
-
+        VStack(spacing: 20) {
             Text("MetalSplatter SampleApp")
-
-            Spacer()
+                .font(.title)
 
             Button("Read Scene File") {
                 isPickingFile = true
@@ -85,8 +82,6 @@ struct ContentView: View {
                 }
             }
 
-            Spacer()
-
             Button("Show Sample Box") {
                 openWindow(value: ModelIdentifier.sampleBox)
             }
@@ -95,7 +90,7 @@ struct ContentView: View {
 #if os(visionOS)
             .disabled(immersiveSpaceIsShown)
 #endif
-
+            
             Button("Show RV Sample") {
                 if let rvModel = ModelIdentifier.rvSample {
                     openWindow(value: rvModel)
@@ -107,8 +102,6 @@ struct ContentView: View {
             .disabled(immersiveSpaceIsShown)
 #endif
 
-            Spacer()
-
 #if os(visionOS)
             Button("Dismiss Immersive Space") {
                 Task {
@@ -117,10 +110,9 @@ struct ContentView: View {
                 }
             }
             .disabled(!immersiveSpaceIsShown)
-
-            Spacer()
-#endif // os(visionOS)
+#endif
         }
+        .padding(30)
     }
 }
 
