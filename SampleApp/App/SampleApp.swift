@@ -17,20 +17,20 @@ struct SampleApp: App {
 #endif
 
 #if os(macOS)
-        WindowGroup(for: ModelIdentifier.self) { modelIdentifier in
-            MetalKitSceneView(modelIdentifier: modelIdentifier.wrappedValue)
-                .navigationTitle(modelIdentifier.wrappedValue?.description ?? "No Model")
+        WindowGroup(for: ModelConfiguration.self) { configuration in
+            MetalKitSceneView(modelIdentifier: configuration.wrappedValue?.modelIdentifier)
+                .navigationTitle(configuration.wrappedValue?.modelIdentifier.description ?? "No Model")
         }
 #endif // os(macOS)
 
 #if os(visionOS)
-        ImmersiveSpace(for: ModelIdentifier.self) { modelIdentifier in
+        ImmersiveSpace(for: ModelConfiguration.self) { configuration in
             CompositorLayer(configuration: ContentStageConfiguration()) { layerRenderer in
                 let renderer = VisionSceneRenderer(layerRenderer)
                 sharePlayIntegration.configureForRenderer(renderer)
                 Task {
                     do {
-                        try await renderer.load(modelIdentifier.wrappedValue)
+                        try await renderer.load(configuration.wrappedValue?.modelIdentifier, usePreprocessComputeShader: configuration.wrappedValue?.usePreprocessComputeShader ?? false)
                     } catch {
                         print("Error loading model: \(error.localizedDescription)")
                     }

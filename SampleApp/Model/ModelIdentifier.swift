@@ -1,5 +1,10 @@
 import Foundation
 
+struct ModelConfiguration: Equatable, Hashable, Codable {
+    let modelIdentifier: ModelIdentifier
+    let usePreprocessComputeShader: Bool
+}
+
 enum ModelIdentifier: Equatable, Hashable, Codable, CustomStringConvertible {
     case gaussianSplat(URL)
     case sampleBox

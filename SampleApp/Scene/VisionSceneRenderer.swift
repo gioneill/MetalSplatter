@@ -111,7 +111,7 @@ class VisionSceneRenderer: ObservableObject {
         }
     }
 
-    func load(_ model: ModelIdentifier?, cameraPosition: SIMD3<Float>? = nil) async throws {
+    func load(_ model: ModelIdentifier?, cameraPosition: SIMD3<Float>? = nil, usePreprocessComputeShader: Bool = false) async throws {
         guard model != self.model else { return }
         self.model = model
 
@@ -124,6 +124,7 @@ class VisionSceneRenderer: ObservableObject {
                                           sampleCount: 1,
                                           maxViewCount: layerRenderer.properties.viewCount,
                                           maxSimultaneousRenders: Constants.maxSimultaneousRenders)
+            splat.usePreprocessComputeShader = usePreprocessComputeShader
             try await splat.read(from: url)
             modelRenderer = splat
             

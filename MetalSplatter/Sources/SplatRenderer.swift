@@ -104,6 +104,14 @@ public class SplatRenderer {
         var index: UInt32
         var depth: Float
     }
+    
+    // Keep in sync with PreprocessShaders.metal : PreprocessedSplat
+    struct PreprocessedSplat {
+        var projectedPosition: SIMD4<Float16>
+        var scaledAxis1: SIMD2<Float16>
+        var scaledAxis2: SIMD2<Float16>
+        var color: SIMD4<Float16>
+    }
 
     public let device: MTLDevice
     public let colorFormat: MTLPixelFormat
@@ -116,6 +124,11 @@ public class SplatRenderer {
      High-quality depth takes longer, but results in a continuous, more-representative depth buffer result, which is useful for reducing artifacts during Vision Pro's frame reprojection.
      */
     public var highQualityDepth: Bool = true
+    
+    /**
+     Use preprocessing compute shader to calculate splat projections and axes before vertex shader.
+     */
+    public var usePreprocessComputeShader: Bool = false
 
     private var writeDepth: Bool {
         depthFormat != .invalid
@@ -153,6 +166,10 @@ public class SplatRenderer {
     private var drawSplatDepthState: MTLDepthStencilState?
     private var postprocessPipelineState: MTLRenderPipelineState?
     private var postprocessDepthState: MTLDepthStencilState?
+    // Preprocess pipeline
+    private var preprocessPipelineState: MTLComputePipelineState?
+    private var preprocessedRenderPipelineState: MTLRenderPipelineState?
+    private var preprocessedDepthState: MTLDepthStencilState?
 
     // dynamicUniformBuffers contains maxSimultaneousRenders uniforms buffers,
     // which we round-robin through, one per render; this is managed by switchToNextDynamicBuffer.
@@ -175,6 +192,8 @@ public class SplatRenderer {
     // rendering.
     // TODO: Replace this with a more robust multiple-buffer scheme to guarantee we're never actively sorting a buffer still in use for rendering
     var splatBufferPrime: MetalBuffer<Splat>
+    // preprocessedSplatBuffer contains one entry for each gaussian splat per viewport
+    var preprocessedSplatBuffer: MetalBuffer<PreprocessedSplat>
 
     var indexBuffer: MetalBuffer<UInt32>
 
@@ -209,6 +228,7 @@ public class SplatRenderer {
 
         self.splatBuffer = try MetalBuffer(device: device)
         self.splatBufferPrime = try MetalBuffer(device: device)
+        self.preprocessedSplatBuffer = try MetalBuffer(device: device)
         self.indexBuffer = try MetalBuffer(device: device)
 
         do {
@@ -221,6 +241,8 @@ public class SplatRenderer {
     public func reset() {
         splatBuffer.count = 0
         try? splatBuffer.setCapacity(0)
+        preprocessedSplatBuffer.count = 0
+        try? preprocessedSplatBuffer.setCapacity(0)
     }
 
     public func read(from url: URL) async throws {
@@ -236,6 +258,9 @@ public class SplatRenderer {
         drawSplatDepthState = nil
         postprocessPipelineState = nil
         postprocessDepthState = nil
+        preprocessPipelineState = nil
+        preprocessedRenderPipelineState = nil
+        preprocessedDepthState = nil
     }
 
     private func buildSingleStagePipelineStatesIfNeeded() throws {
@@ -253,6 +278,14 @@ public class SplatRenderer {
         drawSplatDepthState = try buildDrawSplatDepthState()
         postprocessPipelineState = try buildPostprocessPipelineState()
         postprocessDepthState = try buildPostprocessDepthState()
+    }
+    
+    private func buildPreprocessPipelineStatesIfNeeded() throws {
+        guard preprocessPipelineState == nil else { return }
+        
+        preprocessPipelineState = try buildPreprocessPipelineState()
+        preprocessedRenderPipelineState = try buildPreprocessedRenderPipelineState()
+        preprocessedDepthState = try buildPreprocessedDepthState()
     }
 
     private func buildSingleStagePipelineState() throws -> MTLRenderPipelineState {
@@ -358,6 +391,47 @@ public class SplatRenderer {
     private func buildPostprocessDepthState() throws -> MTLDepthStencilState {
         assert(useMultiStagePipeline)
 
+        let depthStateDescriptor = MTLDepthStencilDescriptor()
+        depthStateDescriptor.depthCompareFunction = MTLCompareFunction.always
+        depthStateDescriptor.isDepthWriteEnabled = writeDepth
+        return device.makeDepthStencilState(descriptor: depthStateDescriptor)!
+    }
+    
+    private func buildPreprocessPipelineState() throws -> MTLComputePipelineState {
+        let computeDescriptor = MTLComputePipelineDescriptor()
+        computeDescriptor.label = "PreprocessPipeline"
+        computeDescriptor.computeFunction = library.makeRequiredFunction(name: "splatPreprocessShader")
+        return try device.makeComputePipelineState(descriptor: computeDescriptor, options: [], reflection: nil)
+    }
+    
+    private func buildPreprocessedRenderPipelineState() throws -> MTLRenderPipelineState {
+        let pipelineDescriptor = MTLRenderPipelineDescriptor()
+        
+        pipelineDescriptor.label = "PreprocessedRenderPipeline"
+        pipelineDescriptor.vertexFunction = library.makeRequiredFunction(name: "preprocessedSplatVertexShader")
+        pipelineDescriptor.fragmentFunction = library.makeRequiredFunction(name: "preprocessedSplatFragmentShader")
+        
+        pipelineDescriptor.rasterSampleCount = sampleCount
+        
+        let colorAttachment = pipelineDescriptor.colorAttachments[0]!
+        colorAttachment.pixelFormat = colorFormat
+        colorAttachment.isBlendingEnabled = true
+        colorAttachment.rgbBlendOperation = .add
+        colorAttachment.alphaBlendOperation = .add
+        colorAttachment.sourceRGBBlendFactor = .one
+        colorAttachment.sourceAlphaBlendFactor = .one
+        colorAttachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
+        colorAttachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        pipelineDescriptor.colorAttachments[0] = colorAttachment
+        
+        pipelineDescriptor.depthAttachmentPixelFormat = depthFormat
+        
+        pipelineDescriptor.maxVertexAmplificationCount = maxViewCount
+        
+        return try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
+    }
+    
+    private func buildPreprocessedDepthState() throws -> MTLDepthStencilState {
         let depthStateDescriptor = MTLDepthStencilDescriptor()
         depthStateDescriptor.depthCompareFunction = MTLCompareFunction.always
         depthStateDescriptor.isDepthWriteEnabled = writeDepth
@@ -484,6 +558,126 @@ public class SplatRenderer {
         switchToNextDynamicBuffer()
         updateUniforms(forViewports: viewports, splatCount: UInt32(splatCount), indexedSplatCount: UInt32(indexedSplatCount))
 
+        if usePreprocessComputeShader {
+            try renderWithPreprocessing(viewports: viewports,
+                                        colorTexture: colorTexture,
+                                        colorStoreAction: colorStoreAction,
+                                        depthTexture: depthTexture,
+                                        rasterizationRateMap: rasterizationRateMap,
+                                        renderTargetArrayLength: renderTargetArrayLength,
+                                        splatCount: splatCount,
+                                        indexedSplatCount: indexedSplatCount,
+                                        instanceCount: instanceCount,
+                                        to: commandBuffer)
+        } else {
+            try renderWithoutPreprocessing(viewports: viewports,
+                                           colorTexture: colorTexture,
+                                           colorStoreAction: colorStoreAction,
+                                           depthTexture: depthTexture,
+                                           rasterizationRateMap: rasterizationRateMap,
+                                           renderTargetArrayLength: renderTargetArrayLength,
+                                           splatCount: splatCount,
+                                           indexedSplatCount: indexedSplatCount,
+                                           instanceCount: instanceCount,
+                                           to: commandBuffer)
+        }
+    }
+    
+    private func renderWithPreprocessing(viewports: [ViewportDescriptor],
+                                        colorTexture: MTLTexture,
+                                        colorStoreAction: MTLStoreAction,
+                                        depthTexture: MTLTexture?,
+                                        rasterizationRateMap: MTLRasterizationRateMap?,
+                                        renderTargetArrayLength: Int,
+                                        splatCount: Int,
+                                        indexedSplatCount: Int,
+                                        instanceCount: Int,
+                                        to commandBuffer: MTLCommandBuffer) throws {
+        try buildPreprocessPipelineStatesIfNeeded()
+        guard let preprocessPipelineState,
+              let preprocessedRenderPipelineState,
+              let preprocessedDepthState else { return }
+        
+        // Ensure preprocessed buffer has capacity
+        let preprocessedSplatCount = splatCount * viewports.count
+        do {
+            try preprocessedSplatBuffer.setCapacity(preprocessedSplatCount)
+        } catch {
+            return
+        }
+        
+        // Run preprocessing compute shader
+        let preprocessEncoder = commandBuffer.makeComputeCommandEncoder()!
+        preprocessEncoder.setComputePipelineState(preprocessPipelineState)
+        preprocessEncoder.setBuffer(dynamicUniformBuffers, offset: uniformBufferOffset, index: 0)
+        preprocessEncoder.setBuffer(splatBuffer.buffer, offset: 0, index: 1)
+        preprocessEncoder.setBuffer(preprocessedSplatBuffer.buffer, offset: 0, index: 2)
+        
+        if device.supportsFamily(.common3) {
+            preprocessEncoder.dispatchThreads(MTLSize(width: splatCount, height: viewports.count, depth: 1),
+                                              threadsPerThreadgroup: MTLSize(width: preprocessPipelineState.maxTotalThreadsPerThreadgroup, height: 1, depth: 1))
+        } else {
+            preprocessEncoder.dispatchThreadgroups(MTLSize(width: splatCount, height: viewports.count, depth: 1),
+                                                   threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1))
+        }
+        preprocessEncoder.endEncoding()
+        
+        // Render using preprocessed data
+        let renderEncoder = renderEncoder(multiStage: false,
+                                          viewports: viewports,
+                                          colorTexture: colorTexture,
+                                          colorStoreAction: colorStoreAction,
+                                          depthTexture: depthTexture,
+                                          rasterizationRateMap: rasterizationRateMap,
+                                          renderTargetArrayLength: renderTargetArrayLength,
+                                          for: commandBuffer)
+        
+        let indexCount = indexedSplatCount * 6
+        if indexBuffer.count < indexCount {
+            do {
+                try indexBuffer.ensureCapacity(indexCount)
+            } catch {
+                return
+            }
+            indexBuffer.count = indexCount
+            for i in 0..<indexedSplatCount {
+                indexBuffer.values[i * 6 + 0] = UInt32(i * 4 + 0)
+                indexBuffer.values[i * 6 + 1] = UInt32(i * 4 + 1)
+                indexBuffer.values[i * 6 + 2] = UInt32(i * 4 + 2)
+                indexBuffer.values[i * 6 + 3] = UInt32(i * 4 + 1)
+                indexBuffer.values[i * 6 + 4] = UInt32(i * 4 + 2)
+                indexBuffer.values[i * 6 + 5] = UInt32(i * 4 + 3)
+            }
+        }
+        
+        renderEncoder.pushDebugGroup("Draw Preprocessed Splats")
+        renderEncoder.setRenderPipelineState(preprocessedRenderPipelineState)
+        renderEncoder.setDepthStencilState(preprocessedDepthState)
+        
+        renderEncoder.setVertexBuffer(dynamicUniformBuffers, offset: uniformBufferOffset, index: 0)
+        renderEncoder.setVertexBuffer(preprocessedSplatBuffer.buffer, offset: 0, index: 2)
+        
+        renderEncoder.drawIndexedPrimitives(type: .triangle,
+                                            indexCount: indexCount,
+                                            indexType: .uint32,
+                                            indexBuffer: indexBuffer.buffer,
+                                            indexBufferOffset: 0,
+                                            instanceCount: instanceCount)
+        
+        renderEncoder.popDebugGroup()
+        renderEncoder.endEncoding()
+    }
+    
+    private func renderWithoutPreprocessing(viewports: [ViewportDescriptor],
+                                           colorTexture: MTLTexture,
+                                           colorStoreAction: MTLStoreAction,
+                                           depthTexture: MTLTexture?,
+                                           rasterizationRateMap: MTLRasterizationRateMap?,
+                                           renderTargetArrayLength: Int,
+                                           splatCount: Int,
+                                           indexedSplatCount: Int,
+                                           instanceCount: Int,
+                                           to commandBuffer: MTLCommandBuffer) throws {
         let multiStage = useMultiStagePipeline
         if multiStage {
             try buildMultiStagePipelineStatesIfNeeded()

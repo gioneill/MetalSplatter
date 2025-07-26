@@ -4,13 +4,14 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var isPickingFile = false
+    @State private var usePreprocessComputeShader = false
 
 #if os(macOS)
     @Environment(\.openWindow) private var openWindow
 #elseif os(iOS)
     @State private var navigationPath = NavigationPath()
 
-    private func openWindow(value: ModelIdentifier) {
+    private func openWindow(value: ModelConfiguration) {
         navigationPath.append(value)
     }
 #elseif os(visionOS)
@@ -19,7 +20,7 @@ struct ContentView: View {
 
     @State var immersiveSpaceIsShown = false
 
-    private func openWindow(value: ModelIdentifier) {
+    private func openWindow(value: ModelConfiguration) {
         Task {
             switch await openImmersiveSpace(value: value) {
             case .opened:
@@ -39,9 +40,9 @@ struct ContentView: View {
 #elseif os(iOS)
         NavigationStack(path: $navigationPath) {
             mainView
-                .navigationDestination(for: ModelIdentifier.self) { modelIdentifier in
-                    MetalKitSceneView(modelIdentifier: modelIdentifier)
-                        .navigationTitle(modelIdentifier.description)
+                .navigationDestination(for: ModelConfiguration.self) { configuration in
+                    MetalKitSceneView(modelIdentifier: configuration.modelIdentifier)
+                        .navigationTitle(configuration.modelIdentifier.description)
                 }
         }
 #endif // os(iOS)
@@ -76,14 +77,14 @@ struct ContentView: View {
                         try await Task.sleep(for: .seconds(10))
                         url.stopAccessingSecurityScopedResource()
                     }
-                    openWindow(value: ModelIdentifier.gaussianSplat(url))
+                    openWindow(value: ModelConfiguration(modelIdentifier: ModelIdentifier.gaussianSplat(url), usePreprocessComputeShader: usePreprocessComputeShader))
                 case .failure:
                     break
                 }
             }
 
             Button("Show Sample Box") {
-                openWindow(value: ModelIdentifier.sampleBox)
+                openWindow(value: ModelConfiguration(modelIdentifier: ModelIdentifier.sampleBox, usePreprocessComputeShader: usePreprocessComputeShader))
             }
             .padding()
             .buttonStyle(.borderedProminent)
@@ -93,7 +94,7 @@ struct ContentView: View {
             
             Button("Show RV Sample") {
                 if let rvModel = ModelIdentifier.rvSample {
-                    openWindow(value: rvModel)
+                    openWindow(value: ModelConfiguration(modelIdentifier: rvModel, usePreprocessComputeShader: usePreprocessComputeShader))
                 }
             }
             .padding()
@@ -101,7 +102,7 @@ struct ContentView: View {
 #if os(visionOS)
             .disabled(immersiveSpaceIsShown)
 #endif
-
+            
 #if os(visionOS)
             Button("Dismiss Immersive Space") {
                 Task {
@@ -111,6 +112,10 @@ struct ContentView: View {
             }
             .disabled(!immersiveSpaceIsShown)
 #endif
+
+            Toggle("Use Preprocess Compute Shader", isOn: $usePreprocessComputeShader)
+                .frame(width: 500)
+                .padding(.horizontal)
         }
         .padding(30)
     }
