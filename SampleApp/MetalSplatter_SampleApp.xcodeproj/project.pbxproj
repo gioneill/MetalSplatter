@@ -60,6 +60,7 @@
 		D7052D882E30A18700C31EEE /* SharePlayTestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePlayTestingView.swift; sourceTree = "<group>"; };
 		D7052D892E30A18700C31EEE /* SpatialContentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialContentManager.swift; sourceTree = "<group>"; };
 		D7052D8A2E30A18700C31EEE /* SplatViewingActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatViewingActivity.swift; sourceTree = "<group>"; };
+		D70D41BE2E38882D003020E4 /* MetalSplatter SampleApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "MetalSplatter SampleApp.entitlements"; sourceTree = "<group>"; };
 		D7B4BCE52E342DF2008913B9 /* RV-compressed.ply */ = {isa = PBXFileReference; lastKnownFileType = text; path = "RV-compressed.ply"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -128,6 +129,7 @@
 		61E3FD792AE5CB0200032652 = {
 			isa = PBXGroup;
 			children = (
+				D70D41BE2E38882D003020E4 /* MetalSplatter SampleApp.entitlements */,
 				610347E22B468A1100693CE3 /* App */,
 				610347E12B468A0B00693CE3 /* Util */,
 				610347E02B468A0000693CE3 /* Scene */,
@@ -274,11 +276,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "MetalSplatter SampleApp.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = L3F4ARKEUN;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Hey I need the camera, okay?";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = "arkit metal";
@@ -309,11 +313,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "MetalSplatter SampleApp.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = L3F4ARKEUN;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Hey I need the camera, okay?";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = "arkit metal";

@@ -83,6 +83,9 @@ class VisionSceneRenderer: ObservableObject {
     
     var cameraSync: SharePlayCameraSync?
     var sharePlaySessionManager: SharePlaySessionManager?
+    
+    private var frameCount = 0
+    private var shouldStopRendering = false
 
     init(_ layerRenderer: LayerRenderer) {
         self.layerRenderer = layerRenderer
@@ -112,12 +115,18 @@ class VisionSceneRenderer: ObservableObject {
     }
 
     func load(_ model: ModelIdentifier?, cameraPosition: SIMD3<Float>? = nil, usePreprocessComputeShader: Bool = false) async throws {
-        guard model != self.model else { return }
+        print("🎯 VisionSceneRenderer.load called with model: \(String(describing: model))")
+        guard model != self.model else { 
+            print("⚠️ Model is same as current model, skipping load")
+            return 
+        }
         self.model = model
 
         modelRenderer = nil
         switch model {
         case .gaussianSplat(let url):
+            print("📊 Loading Gaussian Splat from URL: \(url)")
+            print("📊 File exists: \(FileManager.default.fileExists(atPath: url.path))")
             let splat = try SplatRenderer(device: device,
                                           colorFormat: layerRenderer.configuration.colorFormat,
                                           depthFormat: layerRenderer.configuration.depthFormat,
@@ -125,8 +134,12 @@ class VisionSceneRenderer: ObservableObject {
                                           maxViewCount: layerRenderer.properties.viewCount,
                                           maxSimultaneousRenders: Constants.maxSimultaneousRenders)
             splat.usePreprocessComputeShader = usePreprocessComputeShader
+            print("📊 Reading splat data...")
             try await splat.read(from: url)
+            print("✅ Splat data loaded successfully") 
+            print("📊 Splat point count: \(splat.splatCount)")
             modelRenderer = splat
+            print("✅ Model renderer assigned")
             
             // Set custom camera position if provided
             if let position = cameraPosition {
@@ -136,6 +149,7 @@ class VisionSceneRenderer: ObservableObject {
                 camera.position = SIMD3<Float>(0, 0, -2.5)
             }
         case .sampleBox:
+            print("📦 Loading sample box")
             do {
                 modelRenderer = try SampleBoxRenderer(device: device,
                                                       colorFormat: layerRenderer.configuration.colorFormat,
@@ -143,7 +157,9 @@ class VisionSceneRenderer: ObservableObject {
                                                       sampleCount: 1,
                                                       maxViewCount: layerRenderer.properties.viewCount,
                                                       maxSimultaneousRenders: Constants.maxSimultaneousRenders)
+                print("✅ Sample box renderer created")
             } catch {
+                print("❌ Failed to create SampleBoxRenderer: \(error)")
                 Self.log.error("Failed to create SampleBoxRenderer: \(error)")
                 throw error
             }
@@ -156,23 +172,33 @@ class VisionSceneRenderer: ObservableObject {
                 camera.position = SIMD3<Float>(0, 0, -1.5)
             }
         case .none:
+            print("⚠️ No model provided")
             break
         }
+        print("🎯 VisionSceneRenderer.load completed")
     }
 
     func startRenderLoop() {
+        print("🏃 VisionSceneRenderer.startRenderLoop called")
         Task {
             do {
+                print("🔧 Starting AR session...")
                 try await arSession.run([worldTracking])
+                print("✅ AR session started")
             } catch {
+                print("❌ Failed to initialize ARSession: \(error)")
                 fatalError("Failed to initialize ARSession")
             }
 
-            let renderThread = Thread { [weak self] in
-                self?.renderLoop()
+            let renderThread = Thread { [self] in
+                print("🎬 Render thread started - inside thread closure")
+                print("🎬 About to call renderLoop")
+                self.renderLoop()
+                print("🎬 Render loop exited")
             }
             renderThread.name = "Render Thread"
             renderThread.start()
+            print("🎬 Render thread start() called")
         }
     }
     
@@ -203,12 +229,22 @@ class VisionSceneRenderer: ObservableObject {
 
 
     func renderFrame() {
-        guard let frame = layerRenderer.queryNextFrame() else { return }
+        guard let frame = layerRenderer.queryNextFrame() else { 
+            if frameCount == 0 {
+                print("⚠️ No frame available from layerRenderer")
+            }
+            return 
+        }
 
         frame.startUpdate()
         frame.endUpdate()
 
-        guard let timing = frame.predictTiming() else { return }
+        guard let timing = frame.predictTiming() else { 
+            if frameCount == 0 {
+                print("⚠️ No timing available from frame")
+            }
+            return 
+        }
         LayerRenderer.Clock().wait(until: timing.optimalInputTime)
 
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
@@ -216,7 +252,12 @@ class VisionSceneRenderer: ObservableObject {
         }
 
         let drawables = frame.queryDrawables()
-        guard let drawable = drawables.first else { return }
+        guard let drawable = drawables.first else { 
+            if frameCount < 5 {
+                print("⚠️ No drawable available (frame \(frameCount))")
+            }
+            return 
+        }
 
         _ = inFlightSemaphore.wait(timeout: DispatchTime.distantFuture)
 
@@ -224,6 +265,19 @@ class VisionSceneRenderer: ObservableObject {
 
         let time = LayerRenderer.Clock.Instant.epoch.duration(to: drawable.frameTiming.presentationTime).timeInterval
         let deviceAnchor = worldTracking.queryDeviceAnchor(atTimestamp: time)
+
+        guard let deviceAnchor = deviceAnchor else {
+            if frameCount < 10 {
+                print("⚠️ Device anchor not available yet (frame \(frameCount))")
+            }
+            // Create empty command buffer and encode present to maintain frame lifecycle
+            let emptyCommandBuffer = commandQueue.makeCommandBuffer()!
+            drawable.encodePresent(commandBuffer: emptyCommandBuffer)
+            emptyCommandBuffer.commit()
+            inFlightSemaphore.signal()
+            frame.endSubmission()
+            return
+        }
 
         drawable.deviceAnchor = deviceAnchor
 
@@ -234,15 +288,39 @@ class VisionSceneRenderer: ObservableObject {
 
         let viewports = self.viewports(drawable: drawable, deviceAnchor: deviceAnchor)
 
+        frameCount += 1
+        if frameCount == 1 || frameCount % 60 == 0 {  // Log first frame and every 60 frames
+            print("🎞️ Frame \(frameCount): Successfully got drawable and viewports")
+            print("🎞️ Model renderer: \(modelRenderer != nil ? "Present" : "nil")")
+            if let splat = modelRenderer as? SplatRenderer {
+                print("🎞️ Splat points: \(splat.splatCount)")
+            } else if modelRenderer != nil {
+                print("🎞️ Model renderer type: \(type(of: modelRenderer!))")
+            }
+            print("📷 Camera position: \(camera.position), rotation: \(camera.rotation), scale: \(camera.scale)")
+            print("📐 Viewports count: \(viewports.count)")
+            if !viewports.isEmpty {
+                print("📐 First viewport screen size: \(viewports[0].screenSize)")
+                print("📐 First viewport MTL viewport: \(viewports[0].viewport)")
+            }
+        }
+        
         do {
-            try modelRenderer?.render(viewports: viewports,
-                                      colorTexture: drawable.colorTextures[0],
-                                      colorStoreAction: .store,
-                                      depthTexture: drawable.depthTextures[0],
-                                      rasterizationRateMap: drawable.rasterizationRateMaps.first,
-                                      renderTargetArrayLength: layerRenderer.configuration.layout == .layered ? drawable.views.count : 1,
-                                      to: commandBuffer)
+            if let renderer = modelRenderer {
+                try renderer.render(viewports: viewports,
+                                   colorTexture: drawable.colorTextures[0],
+                                   colorStoreAction: .store,
+                                   depthTexture: drawable.depthTextures[0],
+                                   rasterizationRateMap: drawable.rasterizationRateMaps.first,
+                                   renderTargetArrayLength: layerRenderer.configuration.layout == .layered ? drawable.views.count : 1,
+                                   to: commandBuffer)
+            } else {
+                if frameCount == 1 {
+                    print("⚠️ No model renderer available to render")
+                }
+            }
         } catch {
+            print("❌ Render error: \(error)")
             Self.log.error("Unable to render scene: \(error.localizedDescription)")
         }
 
@@ -254,22 +332,44 @@ class VisionSceneRenderer: ObservableObject {
     }
 
     func renderLoop() {
-        while true {
+        print("🔄 Render loop started")
+        var loopCount = 0
+        while !shouldStopRendering {
+            loopCount += 1
+            if loopCount == 1 || loopCount % 100 == 0 {
+                print("🔄 Render loop iteration \(loopCount), layer state: \(layerRenderer.state)")
+            }
+            
             if layerRenderer.state == .invalidated {
+                print("❌ Layer is invalidated, stopping render loop")
                 Self.log.warning("Layer is invalidated")
                 return
             } else if layerRenderer.state == .paused {
+                if loopCount == 1 || loopCount % 100 == 0 {
+                    print("⏸️ LayerRenderer is paused at iteration \(loopCount), waiting...")
+                }
                 layerRenderer.waitUntilRunning()
                 continue
             } else {
+                if loopCount == 1 {
+                    print("✅ LayerRenderer is running, calling renderFrame")
+                }
                 autoreleasepool {
                     self.renderFrame()
                 }
             }
         }
+        print("🔄 Render loop stopped")
+    }
+    
+    func stopRenderLoop() {
+        print("🛑 Stopping render loop")
+        shouldStopRendering = true
     }
     
     deinit {
+        print("🗑️ VisionSceneRenderer deinit - stopping render loop")
+        shouldStopRendering = true
         NotificationCenter.default.removeObserver(self)
     }
 }

@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @State private var isPickingFile = false
     @State private var usePreprocessComputeShader = false
+    @State private var isLoadingModel = false
 
 #if os(macOS)
     @Environment(\.openWindow) private var openWindow
@@ -21,13 +22,26 @@ struct ContentView: View {
     @State var immersiveSpaceIsShown = false
 
     private func openWindow(value: ModelConfiguration) {
+        print("🪟 openWindow called with value: \(value)")
+        isLoadingModel = true
         Task {
+            print("🪟 About to open immersive space...")
             switch await openImmersiveSpace(value: value) {
             case .opened:
+                print("✅ Immersive space opened successfully")
                 immersiveSpaceIsShown = true
-            case .error, .userCancelled:
-                break
+                // Wait a bit for the model to load
+                try? await Task.sleep(for: .seconds(3))
+                isLoadingModel = false
+            case .error:
+                print("❌ Error opening immersive space")
+                isLoadingModel = false
+            case .userCancelled:
+                print("❌ User cancelled immersive space")
+                isLoadingModel = false
             @unknown default:
+                print("❌ Unknown result from openImmersiveSpace")
+                isLoadingModel = false
                 break
             }
         }
@@ -53,6 +67,13 @@ struct ContentView: View {
         VStack(spacing: 20) {
             Text("MetalSplatter SampleApp")
                 .font(.title)
+            
+#if os(visionOS)
+            if isLoadingModel {
+                ProgressView("Loading model...")
+                    .padding()
+            }
+#endif
 
             Button("Read Scene File") {
                 isPickingFile = true
@@ -71,13 +92,17 @@ struct ContentView: View {
                 isPickingFile = false
                 switch $0 {
                 case .success(let url):
+                    print("📁 File selected: \(url.lastPathComponent)")
+                    print("📁 Full URL: \(url)")
                     _ = url.startAccessingSecurityScopedResource()
                     Task {
                         // This is a sample app. In a real app, this should be more tightly scoped, not using a silly timer.
                         try await Task.sleep(for: .seconds(10))
                         url.stopAccessingSecurityScopedResource()
                     }
-                    openWindow(value: ModelConfiguration(modelIdentifier: ModelIdentifier.gaussianSplat(url), usePreprocessComputeShader: usePreprocessComputeShader))
+                    let modelConfig = ModelConfiguration(modelIdentifier: ModelIdentifier.gaussianSplat(url), usePreprocessComputeShader: usePreprocessComputeShader)
+                    print("📁 Created model configuration: \(modelConfig)")
+                    openWindow(value: modelConfig)
                 case .failure:
                     break
                 }
@@ -108,9 +133,10 @@ struct ContentView: View {
                 Task {
                     await dismissImmersiveSpace()
                     immersiveSpaceIsShown = false
+                    isLoadingModel = false
                 }
             }
-            .disabled(!immersiveSpaceIsShown)
+            .disabled(!immersiveSpaceIsShown || isLoadingModel)
 #endif
 
             Toggle("Use Preprocess Compute Shader", isOn: $usePreprocessComputeShader)
