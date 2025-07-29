@@ -256,7 +256,7 @@ struct SharePlayDebugView: View {
     }
 }
 
-extension GroupSession.State: CustomStringConvertible {
+extension GroupSession.State: @retroactive CustomStringConvertible {
     public var description: String {
         switch self {
         case .waiting: return "waiting"

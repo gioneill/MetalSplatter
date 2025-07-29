@@ -49,7 +49,9 @@ class SharePlayCameraSync: ObservableObject {
             if let userInfo = notification.userInfo,
                let position = userInfo["position"] as? SIMD3<Float>,
                let rotation = userInfo["rotation"] as? simd_quatf {
-                self?.sendCameraUpdate(position: position, rotation: rotation)
+                Task { @MainActor in
+                    self?.sendCameraUpdate(position: position, rotation: rotation)
+                }
             }
         }
     }

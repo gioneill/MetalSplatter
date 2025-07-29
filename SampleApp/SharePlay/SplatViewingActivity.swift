@@ -49,7 +49,7 @@ enum SyncMessage: Codable {
 
 // SIMD3 already conforms to Codable in modern Swift - extension removed to avoid conflict
 
-extension simd_quatf: Codable {
+extension simd_quatf: @retroactive Codable {
     public init(from decoder: Decoder) throws {
         var container = try decoder.unkeyedContainer()
         let x = try container.decode(Float.self)

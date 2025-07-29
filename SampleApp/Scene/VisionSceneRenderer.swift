@@ -127,11 +127,13 @@ class VisionSceneRenderer: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            if let userInfo = notification.userInfo,
-               let position = userInfo["position"] as? SIMD3<Float>,
-               let rotation = userInfo["rotation"] as? simd_quatf {
-                self?.camera.position = position
-                self?.camera.rotation = rotation
+            Task { @MainActor in
+                if let userInfo = notification.userInfo,
+                   let position = userInfo["position"] as? SIMD3<Float>,
+                   let rotation = userInfo["rotation"] as? simd_quatf {
+                    self?.camera.position = position
+                    self?.camera.rotation = rotation
+                }
             }
         }
     }
@@ -222,11 +224,11 @@ class VisionSceneRenderer: ObservableObject {
     }
     
     private func processAllAnchors() async {
-        for await update in await ARUnderstanding(providers: [.hands, .device]).anchorUpdates {
+        for await update in ARUnderstanding(providers: [.hands, .device]).anchorUpdates {
             switch update {
             case .hand(let handUpdate):
                 if let deviceAnchor = currentDeviceAnchor {
-                    await processHandPinch(handUpdate.anchor, deviceAnchor: deviceAnchor)
+                    processHandPinch(handUpdate.anchor, deviceAnchor: deviceAnchor)
                 }
             case .device(let deviceUpdate):
                 currentDeviceAnchor = deviceUpdate.anchor
@@ -240,7 +242,9 @@ class VisionSceneRenderer: ObservableObject {
         let renderThread = Thread { [self] in
             print("🎬 Render thread started - inside thread closure")
             print("🎬 About to call renderLoop")
-            self.renderLoop()
+            Task { @MainActor in
+                self.renderLoop()
+            }
             print("🎬 Render loop exited")
         }
         renderThread.name = "Render Thread"

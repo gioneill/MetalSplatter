@@ -33,7 +33,9 @@ class SharePlayModelSync: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             if let modelIdentifier = notification.userInfo?["modelIdentifier"] as? ModelIdentifier {
-                self?.handleLocalModelLoad(modelIdentifier)
+                Task { @MainActor in
+                    self?.handleLocalModelLoad(modelIdentifier)
+                }
             }
         }
     }

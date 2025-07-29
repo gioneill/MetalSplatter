@@ -54,7 +54,9 @@ class SpatialContentManager: ObservableObject {
                let position = userInfo["position"] as? SIMD3<Float>,
                let participantID = userInfo["participantID"] as? String,
                let isNearby = userInfo["isNearby"] as? Bool {
-                self?.updateParticipantPointer(participantID: participantID, position: position, isNearby: isNearby)
+                Task { @MainActor in
+                    self?.updateParticipantPointer(participantID: participantID, position: position, isNearby: isNearby)
+                }
             }
         }
         
@@ -67,7 +69,9 @@ class SpatialContentManager: ObservableObject {
             if let userInfo = notification.userInfo,
                let annotation = userInfo["annotation"] as? SyncMessage.AnnotationMessage,
                let isNearby = userInfo["isNearby"] as? Bool {
-                self?.addSharedAnnotation(annotation, isNearby: isNearby)
+                Task { @MainActor in
+                    self?.addSharedAnnotation(annotation, isNearby: isNearby)
+                }
             }
         }
         
@@ -80,7 +84,9 @@ class SpatialContentManager: ObservableObject {
             if let userInfo = notification.userInfo,
                let anchorID = userInfo["anchorID"] as? String,
                let anchor = userInfo["anchor"] as? WorldAnchor {
-                self?.handleWorldAnchorUpdate(anchorID: anchorID, anchor: anchor)
+                Task { @MainActor in
+                    self?.handleWorldAnchorUpdate(anchorID: anchorID, anchor: anchor)
+                }
             }
         }
     }
@@ -256,7 +262,7 @@ class SpatialContentManager: ObservableObject {
         
         // For each shared world anchor, we could position content relative to it
         // This enables shared experiences anchored to the real world
-        for (anchorID, anchor) in anchors {
+        for (anchorID, _) in anchors {
             // Example: Place a shared marker at each anchor
             // In a real app, this might be interactive content, annotations, etc.
             logger.debug("World anchor \(anchorID) updated")
@@ -275,7 +281,7 @@ class SpatialContentManager: ObservableObject {
             // Create a world anchor for nearby participants
             #if os(visionOS)
             let transform = matrix4x4_translation(position.x, position.y, position.z)
-            if let worldAnchor = await nearbyParticipantHandler?.createSharedWorldAnchor(at: transform) {
+            if let _ = await nearbyParticipantHandler?.createSharedWorldAnchor(at: transform) {
                 logger.info("Created shared world anchor for content at \(position)")
             }
             #endif

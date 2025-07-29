@@ -83,21 +83,18 @@ class NearbyParticipantHandler: ObservableObject {
         guard let worldTrackingProvider = worldTrackingProvider else { return }
         
         for await anchorUpdate in worldTrackingProvider.anchorUpdates {
+            let worldAnchor = anchorUpdate.anchor
             switch anchorUpdate.event {
             case .added:
-                if let worldAnchor = anchorUpdate.anchor as? WorldAnchor,
-                   worldAnchor.isSharedWithNearbyParticipants {
+                if worldAnchor.isSharedWithNearbyParticipants {
                     await handleSharedWorldAnchor(worldAnchor, event: .added)
                 }
             case .updated:
-                if let worldAnchor = anchorUpdate.anchor as? WorldAnchor,
-                   worldAnchor.isSharedWithNearbyParticipants {
+                if worldAnchor.isSharedWithNearbyParticipants {
                     await handleSharedWorldAnchor(worldAnchor, event: .updated)
                 }
             case .removed:
-                if let worldAnchor = anchorUpdate.anchor as? WorldAnchor {
-                    await handleSharedWorldAnchor(worldAnchor, event: .removed)
-                }
+                await handleSharedWorldAnchor(worldAnchor, event: .removed)
             }
         }
     }
@@ -127,7 +124,7 @@ class NearbyParticipantHandler: ObservableObject {
     }
     
     func createSharedWorldAnchor(at transform: simd_float4x4) async -> WorldAnchor? {
-        guard let arSession = arSession else {
+        guard arSession != nil else {
             logger.error("ARKit session not available")
             return nil
         }

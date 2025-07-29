@@ -159,6 +159,7 @@ class SharePlayIntegrationHelper: ObservableObject {
     
     deinit {
         performanceTimer?.invalidate()
+        let sessionManager = self.sessionManager
         Task { @MainActor in
             sessionManager.endSession()
         }
