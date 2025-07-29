@@ -1,6 +1,15 @@
 {
-  "originHash" : "1f83fee8ba3ac57ea2f5630c3caea1b5ec59a6f6c465a028416d1bbcde7b5888",
+  "originHash" : "5384401c5d30c9cd43a8ed92a82c2fbcbbebf38530f19f5b2e79d575eaa2e606",
   "pins" : [
+    {
+      "identity" : "arunderstanding",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/johnhaney/ARUnderstanding",
+      "state" : {
+        "revision" : "f6dd3b32a183e0666b27c09c64d9c20075713da2",
+        "version" : "26.0.1"
+      }
+    },
     {
       "identity" : "swift-argument-parser",
       "kind" : "remoteSourceControl",

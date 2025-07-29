@@ -33,6 +33,7 @@
 		D7052D922E30A18700C31EEE /* NearbyParticipantHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D822E30A18700C31EEE /* NearbyParticipantHandler.swift */; };
 		D7052D932E30A18700C31EEE /* SharePlayTestingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D882E30A18700C31EEE /* SharePlayTestingView.swift */; };
 		D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */; };
+		D70D41C12E3939A7003020E4 /* ARUnderstanding in Frameworks */ = {isa = PBXBuildFile; productRef = D70D41C02E3939A7003020E4 /* ARUnderstanding */; };
 		D7B4BCE72E342DF2008913B9 /* RV-compressed.ply in Resources */ = {isa = PBXBuildFile; fileRef = D7B4BCE52E342DF2008913B9 /* RV-compressed.ply */; };
 /* End PBXBuildFile section */
 
@@ -70,6 +71,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				617E50CB2B314C4800F99766 /* SplatIO in Frameworks */,
+				D70D41C12E3939A7003020E4 /* ARUnderstanding in Frameworks */,
 				617E50C92B314C4800F99766 /* PLYIO in Frameworks */,
 				61791E002B415D3F00302B57 /* MetalSplatter in Frameworks */,
 				61791E022B415D3F00302B57 /* SampleBoxRenderer in Frameworks */,
@@ -187,6 +189,7 @@
 				617E50CA2B314C4800F99766 /* SplatIO */,
 				61791DFF2B415D3F00302B57 /* MetalSplatter */,
 				61791E012B415D3F00302B57 /* SampleBoxRenderer */,
+				D70D41C02E3939A7003020E4 /* ARUnderstanding */,
 			);
 			productName = "MetalSplatter SampleApp";
 			productReference = 617E50B02B314BE200F99766 /* MetalSplatter SampleApp.app */;
@@ -218,6 +221,7 @@
 			mainGroup = 61E3FD792AE5CB0200032652;
 			packageReferences = (
 				61791DFE2B415D3F00302B57 /* XCLocalSwiftPackageReference ".." */,
+				D70D41BF2E3939A7003020E4 /* XCRemoteSwiftPackageReference "ARUnderstanding" */,
 			);
 			productRefGroup = 61E3FD832AE5CB0200032652 /* Products */;
 			projectDirPath = "";
@@ -493,6 +497,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		D70D41BF2E3939A7003020E4 /* XCRemoteSwiftPackageReference "ARUnderstanding" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/johnhaney/ARUnderstanding";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 26.0.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		61791DFF2B415D3F00302B57 /* MetalSplatter */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -509,6 +524,11 @@
 		617E50CA2B314C4800F99766 /* SplatIO */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SplatIO;
+		};
+		D70D41C02E3939A7003020E4 /* ARUnderstanding */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D70D41BF2E3939A7003020E4 /* XCRemoteSwiftPackageReference "ARUnderstanding" */;
+			productName = ARUnderstanding;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
