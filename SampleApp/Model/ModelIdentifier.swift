@@ -56,4 +56,11 @@ enum ModelIdentifier: Equatable, Hashable, Codable, CustomStringConvertible {
         }
         return .gaussianSplat(url)
     }
+    
+    static var weddingSample: ModelIdentifier? {
+        guard let url = Bundle.main.url(forResource: "wedding-venue", withExtension: "ply") else {
+            return nil
+        }
+        return .gaussianSplat(url)
+    }
 }

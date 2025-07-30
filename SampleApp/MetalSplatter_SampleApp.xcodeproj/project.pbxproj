@@ -35,6 +35,7 @@
 		D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */; };
 		D70D41C12E3939A7003020E4 /* ARUnderstanding in Frameworks */ = {isa = PBXBuildFile; productRef = D70D41C02E3939A7003020E4 /* ARUnderstanding */; };
 		D70D41C42E39D4CB003020E4 /* RV.ply in Resources */ = {isa = PBXBuildFile; fileRef = D70D41C32E39D4CB003020E4 /* RV.ply */; };
+		D70D41C62E39DF56003020E4 /* wedding-venue.ply in Resources */ = {isa = PBXBuildFile; fileRef = D70D41C52E39DF56003020E4 /* wedding-venue.ply */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +65,7 @@
 		D70D41BE2E38882D003020E4 /* MetalSplatter SampleApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "MetalSplatter SampleApp.entitlements"; sourceTree = "<group>"; };
 		D70D41C22E3965AA003020E4 /* MetalSplatter-SampleApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "MetalSplatter-SampleApp-Info.plist"; sourceTree = "<group>"; };
 		D70D41C32E39D4CB003020E4 /* RV.ply */ = {isa = PBXFileReference; lastKnownFileType = text; path = RV.ply; sourceTree = "<group>"; };
+		D70D41C52E39DF56003020E4 /* wedding-venue.ply */ = {isa = PBXFileReference; lastKnownFileType = text; path = "wedding-venue.ply"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,6 +145,7 @@
 				61791DC32B41514300302B57 /* Assets.xcassets */,
 				61E3FD832AE5CB0200032652 /* Products */,
 				619832682AF0BC390022500D /* Frameworks */,
+				D70D41C52E39DF56003020E4 /* wedding-venue.ply */,
 			);
 			sourceTree = "<group>";
 		};
@@ -239,6 +242,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D70D41C62E39DF56003020E4 /* wedding-venue.ply in Resources */,
 				D70D41C42E39D4CB003020E4 /* RV.ply in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

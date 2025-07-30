@@ -129,6 +129,17 @@ struct ContentView: View {
             .disabled(immersiveSpaceIsShown)
 #endif
             
+            Button("Show Wedding Sample") {
+                if let weddingModel = ModelIdentifier.weddingSample {
+                    openWindow(value: ModelConfiguration(modelIdentifier: weddingModel, usePreprocessComputeShader: usePreprocessComputeShader))
+                }
+            }
+            .padding()
+            .buttonStyle(.borderedProminent)
+#if os(visionOS)
+            .disabled(immersiveSpaceIsShown)
+#endif
+            
 #if os(visionOS)
             Button("Dismiss Immersive Space") {
                 Task {

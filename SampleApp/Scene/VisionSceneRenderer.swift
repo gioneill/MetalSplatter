@@ -412,7 +412,6 @@ class VisionSceneRenderer: ObservableObject {
     private func processHandPinch(_ hand: HandAnchor) {
         if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
             print("[GESTURE] 🖐️ processHandPinch called for \(hand.chirality) hand")
-            print("[GESTURE] 📍 Hand joints - thumbTip tracked: \(thumbTip.isTracked), indexTip tracked: \(indexTip.isTracked)")
             lastGestureLogTime = latestPresentationTime
         }
         
@@ -424,7 +423,10 @@ class VisionSceneRenderer: ObservableObject {
         let thumbTip = skeleton.joint(.thumbTip)
         let indexTip = skeleton.joint(.indexFingerTip)
         
+        print("[GESTURE] 📍 Hand joints - thumbTip tracked: \(thumbTip.isTracked), indexTip tracked: \(indexTip.isTracked)")
+        
         guard thumbTip.isTracked && indexTip.isTracked else {
+            
             // Increment tracking failure counter instead of immediate reset
             switch hand.chirality {
             case .right:
