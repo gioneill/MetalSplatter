@@ -63,8 +63,13 @@ class SimplePinchState {
     var initialScale: Float?
     var isRightPinching = false
     var isLeftPinching  = false
-    let pinchStartThreshold:  Float = 0.035   // start when ≤ 3.5 cm
-    let pinchReleaseThreshold: Float = 0.045  // release when > 4.5 cm
+    let pinchStartThreshold:  Float = 0.005   // start when ≤ 0.5 cm
+let pinchReleaseThreshold: Float = 0.007  // release when > 0.7 cm
+    
+    // Joint tracking stability
+    var rightTrackingFailures = 0
+    var leftTrackingFailures = 0
+    let maxTrackingFailures = 3  // Allow 3 failed frames before reset
     
     // Sensitivity settings
     let translationScale: Float = 3.0  // Increased for better movement
@@ -76,6 +81,8 @@ class SimplePinchState {
         initialScale = nil
         isRightPinching = false
         isLeftPinching = false
+        rightTrackingFailures = 0
+        leftTrackingFailures = 0
     }
 }
 
@@ -391,9 +398,38 @@ class VisionSceneRenderer: ObservableObject {
         print("[GESTURE] 📍 Hand joints - thumbTip tracked: \(thumbTip.isTracked), indexTip tracked: \(indexTip.isTracked)")
         
         guard thumbTip.isTracked && indexTip.isTracked else {
-            print("[GESTURE] ⚠️ Hand joints not tracked for \(hand.chirality) hand - resetting state")
-            resetHandState(hand.chirality)
+            // Increment tracking failure counter instead of immediate reset
+            switch hand.chirality {
+            case .right:
+                gestureState.rightTrackingFailures += 1
+                if gestureState.rightTrackingFailures >= gestureState.maxTrackingFailures {
+                    print("[GESTURE] ⚠️ Right hand tracking failed \(gestureState.rightTrackingFailures) times - resetting state")
+                    resetHandState(hand.chirality)
+                } else {
+                    print("[GESTURE] ⚠️ Right hand joints not tracked (\(gestureState.rightTrackingFailures)/\(gestureState.maxTrackingFailures)) - waiting")
+                }
+            case .left:
+                gestureState.leftTrackingFailures += 1
+                if gestureState.leftTrackingFailures >= gestureState.maxTrackingFailures {
+                    print("[GESTURE] ⚠️ Left hand tracking failed \(gestureState.leftTrackingFailures) times - resetting state")
+                    resetHandState(hand.chirality)
+                } else {
+                    print("[GESTURE] ⚠️ Left hand joints not tracked (\(gestureState.leftTrackingFailures)/\(gestureState.maxTrackingFailures)) - waiting")
+                }
+            @unknown default:
+                break
+            }
             return
+        }
+        
+        // Reset tracking failure counters on successful tracking
+        switch hand.chirality {
+        case .right:
+            gestureState.rightTrackingFailures = 0
+        case .left:
+            gestureState.leftTrackingFailures = 0
+        @unknown default:
+            break
         }
         
         // Check if pinching with hysteresis
@@ -416,21 +452,25 @@ class VisionSceneRenderer: ObservableObject {
         
         if active {
             if pinchDistance > releaseT {
-                print("[GESTURE] ❌ \(hand.chirality) hand released - resetting state")
+                print("[GESTURE] 🔓 \(hand.chirality) hand RELEASED (distance: \(pinchDistance*100)cm > \(releaseT*100)cm) - resetting state")
                 resetHandState(hand.chirality)    // released
             } else {
-                print("[GESTURE] ✅ \(hand.chirality) hand still pinching - handling movement")
+                if frameCount % 30 == 0 {  // Reduce spam
+                    print("[GESTURE] ✅ \(hand.chirality) hand still pinching (distance: \(pinchDistance*100)cm) - handling movement")
+                }
                 handlePinchMovement(hand: hand)   // still pinching → translate
             }
         } else {
             if pinchDistance <= startT {
                 // pinch just engaged
-                print("[GESTURE] ✅ \(hand.chirality) hand pinch just engaged - starting movement")
+                print("[GESTURE] 🔒 \(hand.chirality) hand PINCH ENGAGED (distance: \(pinchDistance*100)cm ≤ \(startT*100)cm) - starting movement")
                 if hand.chirality == .right { gestureState.isRightPinching = true }
                 else                         { gestureState.isLeftPinching = true }
                 handlePinchMovement(hand: hand)   // start translating immediately
             } else {
-                print("[GESTURE] ❌ \(hand.chirality) hand not pinching (distance too large)")
+                if frameCount % 60 == 0 {  // Reduce spam
+                    print("[GESTURE] ❌ \(hand.chirality) hand not pinching (distance: \(pinchDistance*100)cm > \(startT*100)cm)")
+                }
             }
         }
         
@@ -509,6 +549,10 @@ class VisionSceneRenderer: ObservableObject {
               gestureState.isLeftPinching,
               let r = gestureState.lastRightPinchPosition,
               let l = gestureState.lastLeftPinchPosition else {
+            // Log why two-handed scaling isn't happening
+            if frameCount % 120 == 0 {  // Every 4 seconds
+                print("[GESTURE] 🤏 Two-handed scaling not active: right=\(gestureState.isRightPinching), left=\(gestureState.isLeftPinching), rightPos=\(gestureState.lastRightPinchPosition != nil), leftPos=\(gestureState.lastLeftPinchPosition != nil)")
+            }
             gestureState.initialTwoHandDistance = nil
             gestureState.initialScale = nil
             return
@@ -520,7 +564,7 @@ class VisionSceneRenderer: ObservableObject {
         if gestureState.initialTwoHandDistance == nil {
             gestureState.initialTwoHandDistance = max(currentDist, 0.001)
             gestureState.initialScale = camera.scale
-            print("🤏 Two-handed scaling baseline set: distance=\(currentDist), scale=\(camera.scale)")
+            print("[GESTURE] 🎯 TWO-HANDED SCALING STARTED: baseline distance=\(currentDist*100)cm, baseline scale=\(camera.scale)")
             return
         }
 
@@ -536,7 +580,7 @@ class VisionSceneRenderer: ObservableObject {
         camera.setScale(smoothed)   // scale scene from baseline
         
         if frameCount % 30 == 0 {
-            print("🤏 Two-handed scale: ratio=\(ratio), target=\(targetScale), smoothed=\(smoothed)")
+            print("[GESTURE] 🎯 Two-handed ZOOM: currentDist=\(currentDist*100)cm, ratio=\(ratio), target=\(targetScale), smoothed=\(smoothed)")
         }
     }
     
@@ -572,9 +616,11 @@ class VisionSceneRenderer: ObservableObject {
         case .right:
             gestureState.lastRightPinchPosition = nil
             gestureState.isRightPinching = false
+            gestureState.rightTrackingFailures = 0
         case .left:
             gestureState.lastLeftPinchPosition = nil
             gestureState.isLeftPinching = false
+            gestureState.leftTrackingFailures = 0
         @unknown default:
             break
         }
