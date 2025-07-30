@@ -92,7 +92,6 @@ struct ContentView: View {
                 isPickingFile = true
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isPickingFile)
 #if os(visionOS)
             .disabled(immersiveSpaceIsShown)
 #endif
