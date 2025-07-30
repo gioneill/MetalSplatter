@@ -160,6 +160,10 @@ struct ProfileView: View {
 - Embrace value types where appropriate
 - Use protocols for abstraction, not just for testing
 
+## Learned Insights
+
+- Take note of the gesture logic and record what you've learned to avoid retreading the same ground in future implementations
+
 ## Summary
 
 Write SwiftUI code that looks and feels like SwiftUI. The framework has matured significantly - trust its patterns and tools. Focus on solving user problems rather than implementing architectural patterns from other platforms.
