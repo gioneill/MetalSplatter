@@ -44,11 +44,10 @@ class SharePlayIntegrationHelper: ObservableObject {
             visionRenderer.cameraSync = cameraSync
             visionRenderer.sharePlaySessionManager = sessionManager
             
-            #if os(visionOS)
-            // For visionOS, we need to set up spatial content management
-            // This would be done after the RealityKit scene is set up
+            // Note: VisionSceneRenderer uses Metal directly, not RealityKit
+            // Spatial content management would need to be implemented differently
+            // or integrated into a RealityKit-based renderer
             logger.info("Configured SharePlay for VisionSceneRenderer")
-            #endif
         }
         
         logger.info("SharePlay configured for renderer: \(type(of: renderer))")

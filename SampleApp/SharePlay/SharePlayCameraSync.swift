@@ -7,14 +7,11 @@ import SwiftUI
 
 class SharePlayCameraSync: ObservableObject {
     @Published var remoteViewports: [String: RemoteViewportState] = [:]
-    @Published var syncedRotation: Angle = .zero
+    @Published var syncedRotation: simd_quatf = simd_quatf(angle: 0, axis: [0,1,0])
     @Published var syncedPosition: SIMD3<Float> = SIMD3<Float>(0, 0, -1.5)
     
     private weak var sessionManager: SharePlaySessionManager?
     private var cancellables = Set<AnyCancellable>()
-    
-    private var lastSyncTime: TimeInterval = 0
-    private let syncInterval: TimeInterval = 1.0 / 30.0 // 30 FPS
     
     struct RemoteViewportState {
         let position: SIMD3<Float>
@@ -31,7 +28,7 @@ class SharePlayCameraSync: ObservableObject {
     @MainActor
     func configure(with sessionManager: SharePlaySessionManager) {
         self.sessionManager = sessionManager
-        sessionManager.delegate = self
+        sessionManager.addDelegate(self)
         
         sessionManager.$activeParticipants
             .sink { [weak self] participants in
@@ -70,18 +67,11 @@ class SharePlayCameraSync: ObservableObject {
     func sendCameraUpdate(position: SIMD3<Float>, rotation: simd_quatf) {
         guard let sessionManager = sessionManager else { return }
         
-        let currentTime = CACurrentMediaTime()
-        guard currentTime - lastSyncTime >= syncInterval else { return }
-        lastSyncTime = currentTime
-        
         sessionManager.sendCameraUpdate(position: position, rotation: rotation)
     }
     
     func applySyncedTransforms(to baseTransform: simd_float4x4) -> simd_float4x4 {
-        let rotationMatrix = matrix4x4_rotation(
-            radians: Float(syncedRotation.radians),
-            axis: SIMD3<Float>(0, 1, 0)
-        )
+        let rotationMatrix = simd_float4x4(syncedRotation)
         
         let translationMatrix = matrix4x4_translation(
             syncedPosition.x,
@@ -94,10 +84,7 @@ class SharePlayCameraSync: ObservableObject {
     
     func updateSyncedCamera(position: SIMD3<Float>, rotation: simd_quatf) {
         self.syncedPosition = position
-        // Convert quaternion to angle for backwards compatibility
-        // In a real implementation, you'd update this to use quaternions throughout
-        let angle = rotation.angle
-        self.syncedRotation = Angle(radians: Double(angle))
+        self.syncedRotation = rotation
     }
     
     func getRemoteParticipantTransforms() -> [(participantID: String, transform: simd_float4x4, isNearby: Bool)] {

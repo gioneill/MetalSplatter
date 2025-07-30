@@ -2,8 +2,9 @@ import Foundation
 import GroupActivities
 import UIKit
 import simd
+import CoreTransferable
 
-struct SplatViewingActivity: GroupActivity {
+struct SplatViewingActivity: GroupActivity, Transferable {
     static let activityIdentifier = "com.metalsplatter.viewing"
     
     var metadata: GroupActivityMetadata {
@@ -14,7 +15,7 @@ struct SplatViewingActivity: GroupActivity {
         }
         metadata.previewImage = UIImage(named: "splat-preview")?.cgImage
         metadata.supportsContinuationOnTV = false
-        metadata.sceneAssociationBehavior = .content(modelIdentifier?.url?.absoluteString ?? "")
+        metadata.sceneAssociationBehavior = .content(modelIdentifier?.contentID ?? "content:none")
         return metadata
     }
     
@@ -22,6 +23,11 @@ struct SplatViewingActivity: GroupActivity {
     
     init(modelIdentifier: ModelIdentifier? = nil) {
         self.modelIdentifier = modelIdentifier
+    }
+    
+    // MARK: - Transferable conformance
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .data)
     }
 }
 

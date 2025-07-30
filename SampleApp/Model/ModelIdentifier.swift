@@ -43,6 +43,13 @@ enum ModelIdentifier: Equatable, Hashable, Codable, CustomStringConvertible {
         }
     }
     
+    var contentID: String {
+        switch self {
+        case .sampleBox: return "content:sampleBox-v1"
+        case .gaussianSplat(let url): return "content:splat:\(url.lastPathComponent.lowercased())"
+        }
+    }
+    
     static var rvSample: ModelIdentifier? {
         guard let url = Bundle.main.url(forResource: "RV-compressed", withExtension: "ply") else {
             return nil

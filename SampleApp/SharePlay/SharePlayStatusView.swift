@@ -5,6 +5,10 @@ struct SharePlayStatusView: View {
     @ObservedObject var sessionManager: SharePlaySessionManager
     @State private var showParticipantsList = false
     
+    private var activity: SplatViewingActivity {
+        SplatViewingActivity(modelIdentifier: nil)  // model-agnostic
+    }
+    
     var body: some View {
         HStack {
             Button(action: {
@@ -35,6 +39,10 @@ struct SharePlayStatusView: View {
             .popover(isPresented: $showParticipantsList) {
                 ParticipantsListView(sessionManager: sessionManager)
             }
+
+            ShareLink(item: activity,
+                      preview: SharePreview("View 3D Splat Together"))
+            .hidden()
             
             Button("End Session") {
                 sessionManager.endSession()

@@ -22,7 +22,21 @@ class SharePlaySessionManager: ObservableObject {
     private var lastCameraUpdateTime: TimeInterval = 0
     private let cameraUpdateThrottle: TimeInterval = 1.0 / 30.0 // 30 FPS max
     
-    weak var delegate: SharePlaySessionDelegate?
+    private let delegates = NSHashTable<AnyObject>.weakObjects()
+
+    func addDelegate(_ delegate: SharePlaySessionDelegate) {
+        delegates.add(delegate)
+    }
+
+    func removeDelegate(_ delegate: SharePlaySessionDelegate) {
+        delegates.remove(delegate)
+    }
+
+    private func notify(_ block: @escaping (SharePlaySessionDelegate) async -> Void) async {
+        for case let d as SharePlaySessionDelegate in delegates.allObjects {
+            await block(d)
+        }
+    }
     
     init() {
         setupGroupSessionListener()
@@ -41,20 +55,11 @@ class SharePlaySessionManager: ObservableObject {
         
         let activity = SplatViewingActivity(modelIdentifier: modelIdentifier)
         
-        switch await activity.prepareForActivation() {
-        case .activationPreferred:
-            do {
-                _ = try await activity.activate()
-                logger.info("SharePlay activity activated successfully")
-            } catch {
-                logger.error("Failed to activate SharePlay activity: \(error)")
-            }
-        case .activationDisabled:
-            logger.warning("SharePlay activation is disabled")
-        case .cancelled:
-            logger.info("SharePlay activation was cancelled")
-        @unknown default:
-            logger.warning("Unknown SharePlay activation result")
+        do {
+            _ = try await activity.activate()
+            logger.info("SharePlay activity activated successfully")
+        } catch {
+            logger.error("Failed to activate SharePlay activity: \(error)")
         }
     }
     
@@ -111,10 +116,7 @@ class SharePlaySessionManager: ObservableObject {
         
         logger.info("Updated participants - Total: \(participants.count), Nearby: \(self.nearbyParticipants.count), Remote: \(self.remoteParticipants.count)")
         
-        await delegate?.participantsDidUpdate(
-            nearby: nearbyParticipants,
-            remote: remoteParticipants
-        )
+        await notify { await $0.participantsDidUpdate(nearby: self.nearbyParticipants, remote: self.remoteParticipants) }
     }
     
     private func setupMessageHandling() {
@@ -138,28 +140,26 @@ class SharePlaySessionManager: ObservableObject {
         
         switch message {
         case .modelSelection(let modelIdentifier):
-            await delegate?.didReceiveModelSelection(modelIdentifier, from: sender)
+            await notify { await $0.didReceiveModelSelection(modelIdentifier, from: sender) }
             
         case .cameraUpdate(let position, let rotation, let timestamp):
-            await delegate?.didReceiveCameraUpdate(
-                position: position,
-                rotation: rotation,
-                timestamp: timestamp,
-                from: sender
-            )
+            await notify {
+                await $0.didReceiveCameraUpdate(
+                    position: position,
+                    rotation: rotation,
+                    timestamp: timestamp,
+                    from: sender
+                )
+            }
             
         case .viewingStateUpdate(let state):
-            await delegate?.didReceiveViewingStateUpdate(state, from: sender)
+            await notify { await $0.didReceiveViewingStateUpdate(state, from: sender) }
             
         case .participantPointer(let position, let participantID):
-            await delegate?.didReceiveParticipantPointer(
-                position: position,
-                participantID: participantID,
-                from: sender
-            )
+            await notify { await $0.didReceiveParticipantPointer(position: position, participantID: participantID, from: sender) }
             
         case .annotation(let annotation):
-            await delegate?.didReceiveAnnotation(annotation, from: sender)
+            await notify { await $0.didReceiveAnnotation(annotation, from: sender) }
         }
     }
     
@@ -262,6 +262,7 @@ class SharePlaySessionManager: ObservableObject {
     }
 }
 
+@MainActor
 protocol SharePlaySessionDelegate: AnyObject {
     func participantsDidUpdate(nearby: Set<Participant>, remote: Set<Participant>) async
     func didReceiveModelSelection(_ modelIdentifier: ModelIdentifier, from participant: Participant) async

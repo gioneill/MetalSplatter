@@ -227,7 +227,7 @@ struct SharePlayDebugView: View {
                 
                 Section("Camera Sync") {
                     LabeledContent("Remote Viewports", value: "\(integrationHelper.cameraSync.remoteViewports.count)")
-                    LabeledContent("Synced Rotation", value: String(format: "%.1f°", integrationHelper.cameraSync.syncedRotation.degrees))
+                    LabeledContent("Synced Rotation", value: String(format: "%.1f°", integrationHelper.cameraSync.syncedRotation.angle * 180 / .pi))
                 }
                 
                 Section("Performance") {

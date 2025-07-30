@@ -23,7 +23,7 @@ class SharePlayModelSync: ObservableObject {
     
     func configure(with sessionManager: SharePlaySessionManager) {
         self.sessionManager = sessionManager
-        sessionManager.delegate = self
+        sessionManager.addDelegate(self)
     }
     
     private func setupNotifications() {
