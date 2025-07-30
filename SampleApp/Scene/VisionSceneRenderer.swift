@@ -96,6 +96,14 @@ class SimplePinchState {
     
     // Sensitivity settings
     let translationScale: Float = 3.0  // Increased for better movement
+
+    // Pinch engage/release debouncing
+    var rightReleaseOverFrames = 0
+    var leftReleaseOverFrames = 0
+    var rightEngageUnderFrames = 0
+    var leftEngageUnderFrames = 0
+    let engageFrames = 2       // require 2 consecutive frames under start threshold to engage
+    let releaseFrames = 6      // require 6 consecutive frames over release threshold to disengage
     
     func reset() {
         lastRightPinchPosition = nil
@@ -163,6 +171,13 @@ class VisionSceneRenderer: ObservableObject {
     private var currentModelURL: URL?
     private var lastGestureLogTime: TimeInterval = 0
     private let gestureLogInterval: TimeInterval = 0.5 // Log every 0.5 seconds
+    // Per-hand logging and freshness tracking
+    private var lastGestureLogTimeRight: TimeInterval = 0
+    private var lastGestureLogTimeLeft: TimeInterval = 0
+    private var rightLastTrackedTime: TimeInterval = 0
+    private var leftLastTrackedTime: TimeInterval = 0
+    private let staleUpdateThreshold: TimeInterval = 0.35 // seconds; allow brief tracking flicker during active pinch
+    private let maxPinchDeltaPerFrame: Float = 0.05 // meters; clamp outlier per-frame fingertip movement
 
     init(_ layerRenderer: LayerRenderer) {
         self.layerRenderer = layerRenderer
@@ -501,13 +516,13 @@ class VisionSceneRenderer: ObservableObject {
             return 
         }
         
-        // Don't process gestures until both hands have been initialized
-        guard bothHandsInitialized else {
+        // Prefer both hands initialized, but allow single-hand translation before that.
+        if !bothHandsInitialized {
             if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
-                print("[GESTURE] ⏳ Waiting for both hands to be initialized before processing gestures")
+                print("[GESTURE] ⏳ Both hands not yet initialized — allowing single-hand translation but suppressing two-hand scaling.")
                 lastGestureLogTime = latestPresentationTime
             }
-            return
+            // We intentionally DO NOT return here; translation can proceed for the active hand.
         }
         
         let thumbTip = skeleton.joint(.thumbTip)
@@ -524,6 +539,12 @@ class VisionSceneRenderer: ObservableObject {
             // Handle joint tracking loss with recovery
             switch hand.chirality {
             case .right:
+                // If we are actively pinching but the joints have been stale for too long, reset immediately to avoid using stale data
+                let now = latestPresentationTime
+                if gestureState.isRightPinching && (now - rightLastTrackedTime) > staleUpdateThreshold {
+                    print("[GESTURE] ⏰ Right joints stale for \(now - rightLastTrackedTime)s during active pinch — resetting right hand state.")
+                    resetHandState(.right)
+                }
                 if !gestureState.rightJointsLost {
                     gestureState.rightJointsLost = true
                     print("[GESTURE] ⚠️ Right hand joints lost but hand still visible - entering recovery mode")
@@ -537,6 +558,12 @@ class VisionSceneRenderer: ObservableObject {
                     print("[GESTURE] ⏳ Right hand joints lost for \(secondsLost)s - waiting for recovery...")
                 }
             case .left:
+                // If we are actively pinching but the joints have been stale for too long, reset immediately to avoid using stale data
+                let now = latestPresentationTime
+                if gestureState.isLeftPinching && (now - leftLastTrackedTime) > staleUpdateThreshold {
+                    print("[GESTURE] ⏰ Left joints stale for \(now - leftLastTrackedTime)s during active pinch — resetting left hand state.")
+                    resetHandState(.left)
+                }
                 if !gestureState.leftJointsLost {
                     gestureState.leftJointsLost = true
                     print("[GESTURE] ⚠️ Left hand joints lost but hand still visible - entering recovery mode")
@@ -563,12 +590,14 @@ class VisionSceneRenderer: ObservableObject {
                 gestureState.rightJointsLost = false
             }
             gestureState.rightTrackingFailures = 0
+            rightLastTrackedTime = latestPresentationTime
         case .left:
             if gestureState.leftJointsLost {
                 print("[GESTURE] ✅ Left hand joints recovered after \(gestureState.leftTrackingFailures) frames!")
                 gestureState.leftJointsLost = false
             }
             gestureState.leftTrackingFailures = 0
+            leftLastTrackedTime = latestPresentationTime
         @unknown default:
             break
         }
@@ -596,23 +625,79 @@ class VisionSceneRenderer: ObservableObject {
         
         if active {
             if pinchDistance > releaseT {
-                print("[GESTURE] 🔓 \(hand.chirality) hand RELEASED (distance: \(pinchDistance*100)cm > \(releaseT*100)cm) - resetting state")
-                resetHandState(hand.chirality)    // released
+                // Debounce release: require several consecutive frames over threshold
+                switch hand.chirality {
+                case .right:
+                    gestureState.rightReleaseOverFrames += 1
+                    if gestureState.rightReleaseOverFrames >= gestureState.releaseFrames {
+                        print("[GESTURE] 🔓 right hand RELEASED (distance: \(pinchDistance*100)cm > \(releaseT*100)cm for \(gestureState.rightReleaseOverFrames) frames) - resetting state")
+                        gestureState.rightReleaseOverFrames = 0
+                        resetHandState(.right)
+                    } else {
+                        // Don't apply movement or reset last position; wait for stability
+                        if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                            print("[GESTURE] ⏳ right hand potential release (\(gestureState.rightReleaseOverFrames)/\(gestureState.releaseFrames)) — holding state")
+                            lastGestureLogTime = latestPresentationTime
+                        }
+                    }
+                case .left:
+                    gestureState.leftReleaseOverFrames += 1
+                    if gestureState.leftReleaseOverFrames >= gestureState.releaseFrames {
+                        print("[GESTURE] 🔓 left hand RELEASED (distance: \(pinchDistance*100)cm > \(releaseT*100)cm for \(gestureState.leftReleaseOverFrames) frames) - resetting state")
+                        gestureState.leftReleaseOverFrames = 0
+                        resetHandState(.left)
+                    } else {
+                        if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                            print("[GESTURE] ⏳ left hand potential release (\(gestureState.leftReleaseOverFrames)/\(gestureState.releaseFrames)) — holding state")
+                            lastGestureLogTime = latestPresentationTime
+                        }
+                    }
+                @unknown default: break
+                }
             } else {
+                // Still under release threshold — reset counters and apply movement
+                switch hand.chirality {
+                case .right: gestureState.rightReleaseOverFrames = 0
+                case .left:  gestureState.leftReleaseOverFrames = 0
+                @unknown default: break
+                }
                 if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
-                    print("[GESTURE] ✅ \(hand.chirality) hand still pinching (distance: \(pinchDistance*100)cm) - handling movement")
+                    print("[GESTURE] ✅ \(hand.chirality) hand still pinching (distance: \(pinchDistance*100)cm) — handling movement")
                     lastGestureLogTime = latestPresentationTime
                 }
-                handlePinchMovement(hand: hand)   // still pinching → translate
+                handlePinchMovement(hand: hand)
             }
         } else {
             if pinchDistance <= startT {
-                // pinch just engaged
-                print("[GESTURE] 🔒 \(hand.chirality) hand PINCH ENGAGED (distance: \(pinchDistance*100)cm ≤ \(startT*100)cm) - starting movement")
-                if hand.chirality == .right { gestureState.isRightPinching = true }
-                else                         { gestureState.isLeftPinching = true }
-                handlePinchMovement(hand: hand)   // start translating immediately
+                // Debounce engage: require a couple frames under start threshold
+                var ready = false
+                switch hand.chirality {
+                case .right:
+                    gestureState.rightEngageUnderFrames += 1
+                    ready = gestureState.rightEngageUnderFrames >= gestureState.engageFrames
+                case .left:
+                    gestureState.leftEngageUnderFrames += 1
+                    ready = gestureState.leftEngageUnderFrames >= gestureState.engageFrames
+                @unknown default: break
+                }
+                if ready {
+                    print("[GESTURE] 🔒 \(hand.chirality) hand PINCH ENGAGED (distance: \(pinchDistance*100)cm ≤ \(startT*100)cm) - starting movement")
+                    if hand.chirality == .right { gestureState.isRightPinching = true; gestureState.rightEngageUnderFrames = 0 }
+                    else                         { gestureState.isLeftPinching  = true; gestureState.leftEngageUnderFrames  = 0 }
+                    handlePinchMovement(hand: hand)
+                } else {
+                    if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                        print("[GESTURE] ⏳ \(hand.chirality) hand potential engage (\(hand.chirality == .right ? gestureState.rightEngageUnderFrames : gestureState.leftEngageUnderFrames)/\(gestureState.engageFrames))")
+                        lastGestureLogTime = latestPresentationTime
+                    }
+                }
             } else {
+                // Not close enough to engage — reset engage counters
+                switch hand.chirality {
+                case .right: gestureState.rightEngageUnderFrames = 0
+                case .left:  gestureState.leftEngageUnderFrames = 0
+                @unknown default: break
+                }
                 if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
                     print("[GESTURE] ❌ \(hand.chirality) hand not pinching (distance: \(pinchDistance*100)cm > \(startT*100)cm)")
                     lastGestureLogTime = latestPresentationTime
@@ -635,54 +720,67 @@ class VisionSceneRenderer: ObservableObject {
         case .right:
             print("[GESTURE] ➡️ Processing right hand movement")
             if let lastPos = gestureState.lastRightPinchPosition {
-                let delta = currentPinchPos - lastPos
-                print("[GESTURE] 📊 Right hand delta: \(delta)")
-                
-                // Pure 3-axis translation only
-                let translation = SIMD3<Float>(
-                    delta.x * gestureState.translationScale,  // Left/Right
-                    delta.y * gestureState.translationScale,  // Up/Down  
-                    delta.z * gestureState.translationScale   // Forward/Back
-                )
-                
-                let blended = lastAppliedTranslation + (translation - lastAppliedTranslation) * smoothing
-                camera.translate(by: blended)
-                lastAppliedTranslation = blended
-                
-                if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
-                    print("[GESTURE] 👋 Right pinch move: \(translation)")
-                    lastGestureLogTime = latestPresentationTime
+                var delta = currentPinchPos - lastPos
+                let mag = simd_length(delta)
+                if mag > maxPinchDeltaPerFrame {
+                    let scale = maxPinchDeltaPerFrame / max(mag, 1e-6)
+                    delta *= scale
+                    if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                        print("[GESTURE] 🚧 Right delta clamped from |\(mag)|m to \(maxPinchDeltaPerFrame)m: \(delta)")
+                        lastGestureLogTime = latestPresentationTime
+                    }
                 }
-            } else {
-                print("[GESTURE] 📍 First right hand pinch position recorded")
-            }
-            gestureState.lastRightPinchPosition = currentPinchPos
-            
-        case .left:
-            print("[GESTURE] ⬅️ Processing left hand movement")
-            if let lastPos = gestureState.lastLeftPinchPosition {
-                let delta = currentPinchPos - lastPos
-                print("[GESTURE] 📊 Left hand delta: \(delta)")
-                
-                // Left hand also does pure 3-axis translation
+                print("[GESTURE] 📊 Right hand delta: \(delta)")
                 let translation = SIMD3<Float>(
                     delta.x * gestureState.translationScale,
                     delta.y * gestureState.translationScale,
                     delta.z * gestureState.translationScale
                 )
-                
                 let blended = lastAppliedTranslation + (translation - lastAppliedTranslation) * smoothing
                 camera.translate(by: blended)
                 lastAppliedTranslation = blended
-                
+                if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                    print("[GESTURE] 👋 Right pinch move: \(translation)")
+                    lastGestureLogTime = latestPresentationTime
+                }
+                // Adopt clamped position (prevents spike adoption)
+                gestureState.lastRightPinchPosition = lastPos + delta
+            } else {
+                print("[GESTURE] 📍 First right hand pinch position recorded")
+                gestureState.lastRightPinchPosition = currentPinchPos
+            }
+            
+        case .left:
+            print("[GESTURE] ⬅️ Processing left hand movement")
+            if let lastPos = gestureState.lastLeftPinchPosition {
+                var delta = currentPinchPos - lastPos
+                let mag = simd_length(delta)
+                if mag > maxPinchDeltaPerFrame {
+                    let scale = maxPinchDeltaPerFrame / max(mag, 1e-6)
+                    delta *= scale
+                    if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                        print("[GESTURE] 🚧 Left delta clamped from |\(mag)|m to \(maxPinchDeltaPerFrame)m: \(delta)")
+                        lastGestureLogTime = latestPresentationTime
+                    }
+                }
+                print("[GESTURE] 📊 Left hand delta: \(delta)")
+                let translation = SIMD3<Float>(
+                    delta.x * gestureState.translationScale,
+                    delta.y * gestureState.translationScale,
+                    delta.z * gestureState.translationScale
+                )
+                let blended = lastAppliedTranslation + (translation - lastAppliedTranslation) * smoothing
+                camera.translate(by: blended)
+                lastAppliedTranslation = blended
                 if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
                     print("[GESTURE] 👋 Left pinch move: \(translation)")
                     lastGestureLogTime = latestPresentationTime
                 }
+                gestureState.lastLeftPinchPosition = lastPos + delta
             } else {
                 print("[GESTURE] 📍 First left hand pinch position recorded")
+                gestureState.lastLeftPinchPosition = currentPinchPos
             }
-            gestureState.lastLeftPinchPosition = currentPinchPos
             
         @unknown default:
             print("[GESTURE] ❓ Unknown hand chirality: \(hand.chirality)")
@@ -700,6 +798,18 @@ class VisionSceneRenderer: ObservableObject {
             // Log why two-handed scaling isn't happening
             if latestPresentationTime - lastGestureLogTime > gestureLogInterval * 2 { // Less frequent for this one
                 print("[GESTURE] 🤏 Two-handed scaling not active: right=\(gestureState.isRightPinching), left=\(gestureState.isLeftPinching), rightPos=\(gestureState.lastRightPinchPosition != nil), leftPos=\(gestureState.lastLeftPinchPosition != nil)")
+                lastGestureLogTime = latestPresentationTime
+            }
+            gestureState.initialTwoHandDistance = nil
+            gestureState.initialScale = nil
+            return
+        }
+
+        // Require recent updates from both hands to avoid scaling against stale positions
+        let now = latestPresentationTime
+        if (now - rightLastTrackedTime) > staleUpdateThreshold || (now - leftLastTrackedTime) > staleUpdateThreshold {
+            if latestPresentationTime - lastGestureLogTime > gestureLogInterval * 2 {
+                print("[GESTURE] ⏸️ Two-handed scaling paused due to stale hand data (right age=\(now - rightLastTrackedTime)s, left age=\(now - leftLastTrackedTime)s)")
                 lastGestureLogTime = latestPresentationTime
             }
             gestureState.initialTwoHandDistance = nil
