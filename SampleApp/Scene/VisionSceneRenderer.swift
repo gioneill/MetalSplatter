@@ -58,15 +58,24 @@ class SimplePinchState {
     var lastRightPinchPosition: SIMD3<Float>?
     var lastLeftPinchPosition: SIMD3<Float>?
     var initialTwoHandDistance: Float?
+
+    // Hysteresis + baseline
+    var initialScale: Float?
+    var isRightPinching = false
+    var isLeftPinching  = false
+    let pinchStartThreshold:  Float = 0.035   // start when ≤ 3.5 cm
+    let pinchReleaseThreshold: Float = 0.045  // release when > 4.5 cm
     
     // Sensitivity settings
     let translationScale: Float = 3.0  // Increased for better movement
-    let pinchThreshold: Float = 0.025  // 2.5cm for pinch detection
     
     func reset() {
         lastRightPinchPosition = nil
         lastLeftPinchPosition = nil
         initialTwoHandDistance = nil
+        initialScale = nil
+        isRightPinching = false
+        isLeftPinching = false
     }
 }
 
@@ -356,7 +365,7 @@ class VisionSceneRenderer: ObservableObject {
             return
         }
         
-        // Check if pinching
+        // Check if pinching with hysteresis
         let thumbPos = SIMD3<Float>(thumbTip.anchorFromJointTransform.columns.3.x,
                                    thumbTip.anchorFromJointTransform.columns.3.y,
                                    thumbTip.anchorFromJointTransform.columns.3.z)
@@ -365,19 +374,36 @@ class VisionSceneRenderer: ObservableObject {
                                    indexTip.anchorFromJointTransform.columns.3.z)
         
         let pinchDistance = simd_distance(thumbPos, indexPos)
-        let threshold = gestureState.pinchThreshold
+        let startT = gestureState.pinchStartThreshold
+        let releaseT = gestureState.pinchReleaseThreshold
         
-        print("[GESTURE] 🤏 \(hand.chirality) hand pinch distance: \(pinchDistance), threshold: \(threshold)")
+        var active = (hand.chirality == .right)
+            ? gestureState.isRightPinching
+            : gestureState.isLeftPinching
         
-        if pinchDistance < threshold {
-            print("[GESTURE] ✅ \(hand.chirality) hand is pinching - handling movement")
-            handlePinchMovement(hand: hand)
+        print("[GESTURE] 🤏 \(hand.chirality) hand pinch distance: \(pinchDistance), start: \(startT), release: \(releaseT), active: \(active)")
+        
+        if active {
+            if pinchDistance > releaseT {
+                print("[GESTURE] ❌ \(hand.chirality) hand released - resetting state")
+                resetHandState(hand.chirality)    // released
+            } else {
+                print("[GESTURE] ✅ \(hand.chirality) hand still pinching - handling movement")
+                handlePinchMovement(hand: hand)   // still pinching → translate
+            }
         } else {
-            print("[GESTURE] ❌ \(hand.chirality) hand not pinching - resetting state")
-            resetHandState(hand.chirality)
+            if pinchDistance <= startT {
+                // pinch just engaged
+                print("[GESTURE] ✅ \(hand.chirality) hand pinch just engaged - starting movement")
+                if hand.chirality == .right { gestureState.isRightPinching = true }
+                else                         { gestureState.isLeftPinching = true }
+                handlePinchMovement(hand: hand)   // start translating immediately
+            } else {
+                print("[GESTURE] ❌ \(hand.chirality) hand not pinching (distance too large)")
+            }
         }
         
-        // Check for two-handed scaling
+        // After per-hand updates:
         checkTwoHandedScaling()
     }
     
@@ -447,27 +473,39 @@ class VisionSceneRenderer: ObservableObject {
     
     @MainActor
     private func checkTwoHandedScaling() {
-        guard let rightPos = gestureState.lastRightPinchPosition,
-              let leftPos = gestureState.lastLeftPinchPosition else {
+        // Need both hands actively pinching and positions
+        guard gestureState.isRightPinching,
+              gestureState.isLeftPinching,
+              let r = gestureState.lastRightPinchPosition,
+              let l = gestureState.lastLeftPinchPosition else {
             gestureState.initialTwoHandDistance = nil
+            gestureState.initialScale = nil
             return
         }
+
+        let currentDist = simd_distance(r, l)
+
+        // Capture baseline once (on gesture start)
+        if gestureState.initialTwoHandDistance == nil {
+            gestureState.initialTwoHandDistance = max(currentDist, 0.001)
+            gestureState.initialScale = camera.scale
+            print("🤏 Two-handed scaling baseline set: distance=\(currentDist), scale=\(camera.scale)")
+            return
+        }
+
+        guard let baseDist = gestureState.initialTwoHandDistance, baseDist > 0,
+              let baseScale = gestureState.initialScale else { return }
+
+        let ratio = currentDist / baseDist
+        let targetScale = baseScale * ratio
         
-        let currentDistance = simd_distance(rightPos, leftPos)
+        // Add mild smoothing to scale
+        let t: Float = 0.2 // 0..1
+        let smoothed = camera.scale + (targetScale - camera.scale) * t
+        camera.setScale(smoothed)   // scale scene from baseline
         
-        if let initialDistance = gestureState.initialTwoHandDistance {
-            if initialDistance > 0 {
-                let scaleRatio = currentDistance / initialDistance
-                let newScale = camera.scale * scaleRatio
-                camera.setScale(newScale)
-                
-                if frameCount % 30 == 0 {
-                    print("🤏 Two-handed scale: \(scaleRatio), new scale: \(newScale)")
-                }
-            }
-            // Only update the initial distance when the gesture starts
-        } else {
-            gestureState.initialTwoHandDistance = currentDistance
+        if frameCount % 30 == 0 {
+            print("🤏 Two-handed scale: ratio=\(ratio), target=\(targetScale), smoothed=\(smoothed)")
         }
     }
     
@@ -502,11 +540,16 @@ class VisionSceneRenderer: ObservableObject {
         switch chirality {
         case .right:
             gestureState.lastRightPinchPosition = nil
+            gestureState.isRightPinching = false
         case .left:
             gestureState.lastLeftPinchPosition = nil
+            gestureState.isLeftPinching = false
         @unknown default:
             break
         }
+        // Clear two-hand baseline whenever either hand releases
+        gestureState.initialTwoHandDistance = nil
+        gestureState.initialScale = nil
     }
 
     private func viewports(drawable: LayerRenderer.Drawable, deviceAnchor: DeviceAnchor?) -> [ModelRendererViewportDescriptor] {
