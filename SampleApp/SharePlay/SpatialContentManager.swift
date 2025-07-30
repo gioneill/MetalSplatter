@@ -21,29 +21,39 @@ class SpatialContentManager: ObservableObject {
     private var rootEntity: Entity?
     
     init() {
+        print("[SHAREPLAY] 🌍 SpatialContentManager initializing...")
         setupNotifications()
     }
     
     func configure(with nearbyHandler: NearbyParticipantHandler, rootEntity: Entity) {
+        print("[SHAREPLAY] 🔧 Configuring SpatialContentManager...")
         self.nearbyParticipantHandler = nearbyHandler
         self.rootEntity = rootEntity
         
         // Observe participant state changes
+        print("[SHAREPLAY] 👥 Setting up participant state observation...")
         nearbyHandler.$participantStates
             .sink { [weak self] states in
+                print("[SHAREPLAY] 🔄 Participant states changed: \(states.count) participants")
                 self?.updateParticipantIndicators(states)
             }
             .store(in: &cancellables)
         
         // Observe shared world anchors
+        print("[SHAREPLAY] ⚓ Setting up shared world anchor observation...")
         nearbyHandler.$sharedWorldAnchors
             .sink { [weak self] anchors in
+                print("[SHAREPLAY] 🌍 Shared world anchors changed: \(anchors.count) anchors")
                 self?.updateWorldAnchoredContent(anchors)
             }
             .store(in: &cancellables)
+        
+        print("[SHAREPLAY] ✅ SpatialContentManager configuration complete")
     }
     
     private func setupNotifications() {
+        print("[SHAREPLAY] 📡 Setting up spatial content notifications...")
+        
         // Listen for participant pointer updates
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("ParticipantPointerUpdate"),
@@ -54,9 +64,12 @@ class SpatialContentManager: ObservableObject {
                let position = userInfo["position"] as? SIMD3<Float>,
                let participantID = userInfo["participantID"] as? String,
                let isNearby = userInfo["isNearby"] as? Bool {
+                print("[SHAREPLAY] 👆 Received participant pointer update: \(participantID) at \(position)")
                 Task { @MainActor in
                     self?.updateParticipantPointer(participantID: participantID, position: position, isNearby: isNearby)
                 }
+            } else {
+                print("[SHAREPLAY] ⚠️ Invalid ParticipantPointerUpdate notification received")
             }
         }
         
@@ -69,9 +82,12 @@ class SpatialContentManager: ObservableObject {
             if let userInfo = notification.userInfo,
                let annotation = userInfo["annotation"] as? SyncMessage.AnnotationMessage,
                let isNearby = userInfo["isNearby"] as? Bool {
+                print("[SHAREPLAY] 💬 Received annotation: '\(annotation.text)' from \(annotation.participantID)")
                 Task { @MainActor in
                     self?.addSharedAnnotation(annotation, isNearby: isNearby)
                 }
+            } else {
+                print("[SHAREPLAY] ⚠️ Invalid AnnotationReceived notification received")
             }
         }
         
@@ -84,39 +100,58 @@ class SpatialContentManager: ObservableObject {
             if let userInfo = notification.userInfo,
                let anchorID = userInfo["anchorID"] as? String,
                let anchor = userInfo["anchor"] as? WorldAnchor {
+                print("[SHAREPLAY] ⚓ Received world anchor update: \(anchorID)")
                 Task { @MainActor in
                     self?.handleWorldAnchorUpdate(anchorID: anchorID, anchor: anchor)
                 }
+            } else {
+                print("[SHAREPLAY] ⚠️ Invalid SharedWorldAnchorUpdate notification received")
             }
         }
+        
+        print("[SHAREPLAY] ✅ Spatial content notifications setup complete")
     }
     
     private func updateParticipantIndicators(_ participantStates: [String: NearbyParticipantHandler.ParticipantSpatialState]) {
-        guard let rootEntity = rootEntity else { return }
+        guard let rootEntity = rootEntity else { 
+            print("[SHAREPLAY] ⚠️ No root entity available for participant indicators")
+            return 
+        }
+        
+        print("[SHAREPLAY] 🔄 Updating participant indicators for \(participantStates.count) participants...")
         
         // Remove indicators for participants who left
         let currentParticipantIDs = Set(participantStates.keys)
+        var removedCount = 0
         for participantID in participantIndicators.keys {
             if !currentParticipantIDs.contains(participantID) {
                 if let indicator = participantIndicators.removeValue(forKey: participantID) {
                     rootEntity.removeChild(indicator)
+                    print("[SHAREPLAY] 🗟️ Removed indicator for departed participant: \(participantID)")
+                    removedCount += 1
                 }
             }
         }
         
         // Add or update indicators for current participants
+        var addedCount = 0
+        var updatedCount = 0
         for (participantID, state) in participantStates {
             if let existingIndicator = participantIndicators[participantID] {
                 // Update existing indicator
                 updateParticipantIndicatorPosition(existingIndicator, state: state)
+                updatedCount += 1
             } else {
                 // Create new indicator
                 let indicator = createParticipantIndicator(for: state)
                 participantIndicators[participantID] = indicator
                 rootEntity.addChild(indicator)
+                print("[SHAREPLAY] ➕ Added indicator for new participant: \(participantID) (\(state.isNearby ? "nearby" : "remote"))")
+                addedCount += 1
             }
         }
         
+        print("[SHAREPLAY] ✅ Participant indicators updated - Added: \(addedCount), Updated: \(updatedCount), Removed: \(removedCount)")
         logger.debug("Updated participant indicators for \(participantStates.count) participants")
     }
     
@@ -173,17 +208,24 @@ class SpatialContentManager: ObservableObject {
     }
     
     private func updateParticipantPointer(participantID: String, position: SIMD3<Float>, isNearby: Bool) {
-        guard let rootEntity = rootEntity else { return }
+        guard let rootEntity = rootEntity else { 
+            print("[SHAREPLAY] ⚠️ No root entity available for participant pointer")
+            return 
+        }
+        
+        print("[SHAREPLAY] 👆 Updating pointer for participant \(participantID) (\(isNearby ? "nearby" : "remote")) at \(position)")
         
         // Remove existing pointer
         if let existingPointer = participantPointers[participantID] {
             rootEntity.removeChild(existingPointer)
+            print("[SHAREPLAY] 🗟️ Removed existing pointer for \(participantID)")
         }
         
         // Create new pointer
         let pointer = createParticipantPointer(at: position, isNearby: isNearby)
         participantPointers[participantID] = pointer
         rootEntity.addChild(pointer)
+        print("[SHAREPLAY] ➕ Added new pointer for \(participantID)")
         
         // Auto-remove pointer after a few seconds
         Task {
@@ -192,6 +234,7 @@ class SpatialContentManager: ObservableObject {
                currentPointer == pointer {
                 participantPointers.removeValue(forKey: participantID)
                 rootEntity.removeChild(pointer)
+                print("[SHAREPLAY] ⏰ Auto-removed expired pointer for \(participantID)")
             }
         }
         
@@ -223,11 +266,17 @@ class SpatialContentManager: ObservableObject {
     }
     
     private func addSharedAnnotation(_ annotation: SyncMessage.AnnotationMessage, isNearby: Bool) {
-        guard let rootEntity = rootEntity else { return }
+        guard let rootEntity = rootEntity else { 
+            print("[SHAREPLAY] ⚠️ No root entity available for annotation")
+            return 
+        }
+        
+        print("[SHAREPLAY] 💬 Adding shared annotation: '\(annotation.text)' from \(annotation.participantID) (\(isNearby ? "nearby" : "remote")) at \(annotation.position)")
         
         // Remove existing annotation with same ID
         if let existingAnnotation = sharedAnnotations[annotation.id] {
             rootEntity.removeChild(existingAnnotation.entity)
+            print("[SHAREPLAY] 🗟️ Replaced existing annotation with ID: \(annotation.id)")
         }
         
         // Create new annotation
@@ -235,6 +284,7 @@ class SpatialContentManager: ObservableObject {
         sharedAnnotations[annotation.id] = annotationEntity
         rootEntity.addChild(annotationEntity.entity)
         
+        print("[SHAREPLAY] ✅ Added shared annotation successfully")
         logger.info("Added shared annotation: \(annotation.text) at \(annotation.position)")
     }
     
@@ -275,20 +325,31 @@ class SpatialContentManager: ObservableObject {
     }
     
     func placeSharedContent(at position: SIMD3<Float>, anchoredToWorld: Bool = false) async {
-        guard let rootEntity = rootEntity else { return }
+        guard let rootEntity = rootEntity else { 
+            print("[SHAREPLAY] ⚠️ No root entity available for placing shared content")
+            return 
+        }
+        
+        print("[SHAREPLAY] 🌍 Placing shared content at \(position), anchored: \(anchoredToWorld)")
         
         if anchoredToWorld {
             // Create a world anchor for nearby participants
             #if os(visionOS)
             let transform = matrix4x4_translation(position.x, position.y, position.z)
             if let _ = await nearbyParticipantHandler?.createSharedWorldAnchor(at: transform) {
+                print("[SHAREPLAY] ⚓ Created shared world anchor for content at \(position)")
                 logger.info("Created shared world anchor for content at \(position)")
+            } else {
+                print("[SHAREPLAY] ❌ Failed to create shared world anchor")
             }
+            #else
+            print("[SHAREPLAY] ⚠️ World anchoring not available on this platform")
             #endif
         } else {
             // Place content without world anchoring (works for all participants)
             let contentEntity = createSharedContentEntity(at: position)
             rootEntity.addChild(contentEntity)
+            print("[SHAREPLAY] ✅ Placed shared content entity (non-anchored)")
         }
     }
     
@@ -306,6 +367,7 @@ class SpatialContentManager: ObservableObject {
     }
     
     deinit {
+        print("[SHAREPLAY] 🗑️ SpatialContentManager deinit - cleaning up notifications")
         NotificationCenter.default.removeObserver(self)
     }
 }

@@ -147,6 +147,8 @@ class VisionSceneRenderer: ObservableObject {
     private var lastAppliedTranslation = SIMD3<Float>(repeating: 0)
     private let smoothing: Float = 0.2 // 0..1, higher = snappier
     private var currentModelURL: URL?
+    private var lastGestureLogTime: TimeInterval = 0
+    private let gestureLogInterval: TimeInterval = 0.5 // Log every 0.5 seconds
 
     init(_ layerRenderer: LayerRenderer) {
         self.layerRenderer = layerRenderer
@@ -376,13 +378,16 @@ class VisionSceneRenderer: ObservableObject {
             switch handAnchor.event {
             case .added, .updated:
                 let hand = handAnchor.anchor
-                if frameCount % 30 == 0 {
-                    print("[GESTURE] 👋 Hand \(hand.chirality) - isTracked: \(hand.isTracked)")
-                }
+                print("[GESTURE] 👋 Hand \(hand.chirality) - isTracked: \(hand.isTracked) (Event: \(handAnchor.event))")
                 
-                // Get current device anchor for transformation
-                _ = worldTracking.queryDeviceAnchor(atTimestamp: latestPresentationTime)
-                processHandPinch(hand)
+                if hand.isTracked {
+                    // Get current device anchor for transformation
+                    _ = worldTracking.queryDeviceAnchor(atTimestamp: latestPresentationTime)
+                    processHandPinch(hand)
+                } else {
+                    print("[GESTURE] ⚠️ Hand \(hand.chirality) is not tracked, skipping pinch processing.")
+                    resetHandState(hand.chirality)
+                }
                 
             case .removed:
                 print("[GESTURE] 👋 Hand removed: \(handAnchor.anchor.chirality)")
@@ -458,19 +463,23 @@ class VisionSceneRenderer: ObservableObject {
         let startT = gestureState.pinchStartThreshold
         let releaseT = gestureState.pinchReleaseThreshold
         
-        var active = (hand.chirality == .right)
+        let active = (hand.chirality == .right)
             ? gestureState.isRightPinching
             : gestureState.isLeftPinching
         
-        print("[GESTURE] 🤏 \(hand.chirality) hand pinch distance: \(pinchDistance), start: \(startT), release: \(releaseT), active: \(active)")
+        if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+            print("[GESTURE] 🤏 \(hand.chirality) hand pinch distance: \(pinchDistance), start: \(startT), release: \(releaseT), active: \(active)")
+            lastGestureLogTime = latestPresentationTime
+        }
         
         if active {
             if pinchDistance > releaseT {
                 print("[GESTURE] 🔓 \(hand.chirality) hand RELEASED (distance: \(pinchDistance*100)cm > \(releaseT*100)cm) - resetting state")
                 resetHandState(hand.chirality)    // released
             } else {
-                if frameCount % 30 == 0 {  // Reduce spam
+                if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
                     print("[GESTURE] ✅ \(hand.chirality) hand still pinching (distance: \(pinchDistance*100)cm) - handling movement")
+                    lastGestureLogTime = latestPresentationTime
                 }
                 handlePinchMovement(hand: hand)   // still pinching → translate
             }
@@ -482,8 +491,9 @@ class VisionSceneRenderer: ObservableObject {
                 else                         { gestureState.isLeftPinching = true }
                 handlePinchMovement(hand: hand)   // start translating immediately
             } else {
-                if frameCount % 60 == 0 {  // Reduce spam
+                if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
                     print("[GESTURE] ❌ \(hand.chirality) hand not pinching (distance: \(pinchDistance*100)cm > \(startT*100)cm)")
+                    lastGestureLogTime = latestPresentationTime
                 }
             }
         }
@@ -517,8 +527,9 @@ class VisionSceneRenderer: ObservableObject {
                 camera.translate(by: blended)
                 lastAppliedTranslation = blended
                 
-                if frameCount % 60 == 0 {
+                if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
                     print("[GESTURE] 👋 Right pinch move: \(translation)")
+                    lastGestureLogTime = latestPresentationTime
                 }
             } else {
                 print("[GESTURE] 📍 First right hand pinch position recorded")
@@ -564,8 +575,9 @@ class VisionSceneRenderer: ObservableObject {
               let r = gestureState.lastRightPinchPosition,
               let l = gestureState.lastLeftPinchPosition else {
             // Log why two-handed scaling isn't happening
-            if frameCount % 120 == 0 {  // Every 4 seconds
+            if latestPresentationTime - lastGestureLogTime > gestureLogInterval * 2 { // Less frequent for this one
                 print("[GESTURE] 🤏 Two-handed scaling not active: right=\(gestureState.isRightPinching), left=\(gestureState.isLeftPinching), rightPos=\(gestureState.lastRightPinchPosition != nil), leftPos=\(gestureState.lastLeftPinchPosition != nil)")
+                lastGestureLogTime = latestPresentationTime
             }
             gestureState.initialTwoHandDistance = nil
             gestureState.initialScale = nil

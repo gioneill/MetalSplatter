@@ -35,14 +35,20 @@ class NearbyParticipantHandler: ObservableObject {
     }
     
     init() {
+        print("[SHAREPLAY] 👥 NearbyParticipantHandler initializing...")
         setupARKitSession()
     }
     
     func configure(with sessionManager: SharePlaySessionManager) {
+        print("[SHAREPLAY] 🔧 Configuring NearbyParticipantHandler with session manager")
         self.sessionManager = sessionManager
         
         sessionManager.$nearbyParticipants
             .sink { [weak self] participants in
+                print("[SHAREPLAY] 🏠 Nearby participants updated: \(participants.count) participants")
+                for participant in participants {
+                    print("[SHAREPLAY]   👤 Nearby: \(participant.id)")
+                }
                 self?.nearbyParticipants = participants
                 self?.updateParticipantStates()
             }
@@ -50,53 +56,80 @@ class NearbyParticipantHandler: ObservableObject {
         
         sessionManager.$remoteParticipants
             .sink { [weak self] participants in
+                print("[SHAREPLAY] 📹 Remote participants updated: \(participants.count) participants")
+                for participant in participants {
+                    print("[SHAREPLAY]   👤 Remote: \(participant.id)")
+                }
                 self?.remoteParticipants = participants
                 self?.updateParticipantStates()
             }
             .store(in: &cancellables)
+        
+        print("[SHAREPLAY] ✅ NearbyParticipantHandler configuration complete")
     }
     
     private func setupARKitSession() {
         #if os(visionOS)
+        print("[SHAREPLAY] 🌐 Setting up ARKit session for world anchors...")
         Task {
             arSession = ARKitSession()
             worldTrackingProvider = WorldTrackingProvider()
             
             guard let arSession = arSession,
                   let worldTrackingProvider = worldTrackingProvider else {
+                print("[SHAREPLAY] ❌ Failed to create ARKit session or world tracking provider")
                 logger.error("Failed to create ARKit session or world tracking provider")
                 return
             }
             
             do {
+                print("[SHAREPLAY] 🚀 Starting ARKit session with world tracking...")
                 try await arSession.run([worldTrackingProvider])
+                print("[SHAREPLAY] ✅ ARKit session started successfully")
                 await observeWorldAnchors()
             } catch {
+                print("[SHAREPLAY] ❌ Failed to start ARKit session: \(error)")
                 logger.error("Failed to start ARKit session: \(error)")
             }
         }
+        #else
+        print("[SHAREPLAY] ⚠️ ARKit session setup skipped - not on visionOS")
         #endif
     }
     
     #if os(visionOS)
     private func observeWorldAnchors() async {
-        guard let worldTrackingProvider = worldTrackingProvider else { return }
+        guard let worldTrackingProvider = worldTrackingProvider else { 
+            print("[SHAREPLAY] ❌ No world tracking provider available for anchor observation")
+            return 
+        }
+        
+        print("[SHAREPLAY] 👀 Starting to observe world anchor updates...")
         
         for await anchorUpdate in worldTrackingProvider.anchorUpdates {
             let worldAnchor = anchorUpdate.anchor
+            print("[SHAREPLAY] ⚓ World anchor update: \(anchorUpdate.event) for \(worldAnchor.id)")
+            
             switch anchorUpdate.event {
             case .added:
                 if worldAnchor.isSharedWithNearbyParticipants {
+                    print("[SHAREPLAY] ➕ Shared world anchor added: \(worldAnchor.id)")
                     await handleSharedWorldAnchor(worldAnchor, event: .added)
+                } else {
+                    print("[SHAREPLAY] ℹ️ Non-shared world anchor added (ignoring): \(worldAnchor.id)")
                 }
             case .updated:
                 if worldAnchor.isSharedWithNearbyParticipants {
+                    print("[SHAREPLAY] 🔄 Shared world anchor updated: \(worldAnchor.id)")
                     await handleSharedWorldAnchor(worldAnchor, event: .updated)
                 }
             case .removed:
+                print("[SHAREPLAY] ➖ World anchor removed: \(worldAnchor.id)")
                 await handleSharedWorldAnchor(worldAnchor, event: .removed)
             }
         }
+        
+        print("[SHAREPLAY] ⚠️ World anchor observation loop ended - this should not happen during normal operation")
     }
     
     private func handleSharedWorldAnchor(_ anchor: WorldAnchor, event: AnchorUpdate<WorldAnchor>.Event) async {
@@ -105,13 +138,16 @@ class NearbyParticipantHandler: ObservableObject {
         switch event {
         case .added, .updated:
             sharedWorldAnchors[anchorID] = anchor
+            print("[SHAREPLAY] ⚓ Shared world anchor \(event == .added ? "added" : "updated"): \(anchorID)")
             logger.info("Shared world anchor \(event == .added ? "added" : "updated"): \(anchorID)")
         case .removed:
             sharedWorldAnchors.removeValue(forKey: anchorID)
+            print("[SHAREPLAY] 🔥 Shared world anchor removed: \(anchorID)")
             logger.info("Shared world anchor removed: \(anchorID)")
         }
         
         // Notify other components about world anchor changes
+        print("[SHAREPLAY] 📡 Posting SharedWorldAnchorUpdate notification")
         NotificationCenter.default.post(
             name: NSNotification.Name("SharedWorldAnchorUpdate"),
             object: nil,
@@ -140,8 +176,11 @@ class NearbyParticipantHandler: ObservableObject {
     #endif
     
     private func updateParticipantStates() {
+        print("[SHAREPLAY] 🔄 Updating participant states...")
+        
         // Update spatial states for all participants
         let allParticipants = nearbyParticipants.union(remoteParticipants)
+        let beforeStatesCount = participantStates.count
         
         for participant in allParticipants {
             let isNearby = nearbyParticipants.contains(participant)
@@ -159,17 +198,23 @@ class NearbyParticipantHandler: ObservableObject {
             )
             
             participantStates[participant.id.uuidString] = state
+            print("[SHAREPLAY] 💾 Updated state for participant \(participant.id) (\(isNearby ? "nearby" : "remote"))")
         }
         
         // Remove states for participants who left
         let currentParticipantIDs = Set(allParticipants.map { $0.id.uuidString })
+        var removedCount = 0
         for participantID in participantStates.keys {
             if !currentParticipantIDs.contains(participantID) {
                 participantStates.removeValue(forKey: participantID)
+                print("[SHAREPLAY] 🗟️ Removed state for departed participant: \(participantID)")
+                removedCount += 1
             }
         }
         
-//        logger.info("Updated participant states - Nearby: \(nearbyParticipants.count), Remote: \(remoteParticipants.count)")
+        let afterStatesCount = participantStates.count
+        print("[SHAREPLAY] ✅ Participant states updated - Total: \(afterStatesCount) (was \(beforeStatesCount)), Nearby: \(self.nearbyParticipants.count), Remote: \(self.remoteParticipants.count), Removed: \(removedCount)")
+        logger.info("Updated participant states - Nearby: \(self.nearbyParticipants.count), Remote: \(self.remoteParticipants.count)")
     }
     
     func getPositionForContentRelativeToParticipant(_ participantID: String, offset: SIMD3<Float> = SIMD3<Float>(0, 0, 0)) -> simd_float4x4? {
@@ -213,18 +258,24 @@ class NearbyParticipantHandler: ObservableObject {
     }
     
     func handleParticipantGesture(participantID: String, gestureType: ParticipantGesture, position: SIMD3<Float>) {
+        let isNearby = participantStates[participantID]?.isNearby ?? false
+        print("[SHAREPLAY] 👆 Participant \(participantID) (\(isNearby ? "nearby" : "remote")) performed gesture: \(gestureType.rawValue) at \(position)")
         logger.info("Participant \(participantID) performed gesture: \(gestureType.rawValue) at \(position)")
         
         // Send gesture information to other participants
         if let sessionManager = sessionManager {
+            print("[SHAREPLAY] 📤 Sending gesture as participant pointer to other participants")
             Task {
                 // This would be implemented as part of the gesture synchronization system
                 // For now, we'll use the participant pointer message
                 sessionManager.sendParticipantPointer(position: position, participantID: participantID)
             }
+        } else {
+            print("[SHAREPLAY] ⚠️ No session manager available to send gesture")
         }
         
         // Post local notification for UI updates
+        print("[SHAREPLAY] 📡 Posting ParticipantGesture notification for local UI")
         NotificationCenter.default.post(
             name: NSNotification.Name("ParticipantGesture"),
             object: nil,
@@ -232,7 +283,7 @@ class NearbyParticipantHandler: ObservableObject {
                 "participantID": participantID,
                 "gestureType": gestureType,
                 "position": position,
-                "isNearby": participantStates[participantID]?.isNearby ?? false
+                "isNearby": isNearby
             ]
         )
     }
