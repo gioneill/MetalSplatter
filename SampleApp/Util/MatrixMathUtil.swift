@@ -1,4 +1,5 @@
 import simd
+import Foundation
 
 // Generic matrix math utility functions; from Apple sample code
 
@@ -29,4 +30,34 @@ func matrix_perspective_right_hand(fovyRadians fovy: Float, aspectRatio: Float, 
                                          vector_float4( 0, ys, 0,   0),
                                          vector_float4( 0,  0, zs, -1),
                                          vector_float4( 0,  0, zs * nearZ, 0)))
+}
+
+// MARK: - Camera Pose Storage
+
+struct PoseStore {
+    private static let userDefaults = UserDefaults.standard
+    
+    private static func key(for url: URL) -> String {
+        return "camera_origin_\(url.absoluteString)"
+    }
+    
+    static func save(pose: SavedCameraPose, for url: URL) {
+        do {
+            let data = try JSONEncoder().encode(pose)
+            userDefaults.set(data, forKey: key(for: url))
+            print("✅ Saved new origin for \(url.lastPathComponent)")
+        } catch {
+            print("❌ Failed to save origin: \(error)")
+        }
+    }
+    
+    static func load(for url: URL) -> SavedCameraPose? {
+        guard let data = userDefaults.data(forKey: key(for: url)) else { return nil }
+        do {
+            return try JSONDecoder().decode(SavedCameraPose.self, from: data)
+        } catch {
+            print("❌ Failed to load origin: \(error)")
+            return nil
+        }
+    }
 }

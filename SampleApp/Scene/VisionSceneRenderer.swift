@@ -125,6 +125,7 @@ class VisionSceneRenderer: ObservableObject {
     private var didLogFirstHandUpdate = false
     private var lastAppliedTranslation = SIMD3<Float>(repeating: 0)
     private let smoothing: Float = 0.2 // 0..1, higher = snappier
+    private var currentModelURL: URL?
 
     init(_ layerRenderer: LayerRenderer) {
         self.layerRenderer = layerRenderer
@@ -136,6 +137,7 @@ class VisionSceneRenderer: ObservableObject {
         arSession = ARKitSession()
         
         setupCameraSync()
+        setupOriginNotifications()
     }
     
     private func setupCameraSync() {
@@ -155,6 +157,19 @@ class VisionSceneRenderer: ObservableObject {
             }
         }
     }
+    
+    private func setupOriginNotifications() {
+        // Listen for set origin requests
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("SetNewOrigin"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.setOriginForCurrentModel()
+            }
+        }
+    }
 
     func load(_ model: ModelIdentifier?, cameraPosition: SIMD3<Float>? = nil, usePreprocessComputeShader: Bool = false) async throws {
         print("🎯 VisionSceneRenderer.load called with model: \(String(describing: model))")
@@ -169,6 +184,10 @@ class VisionSceneRenderer: ObservableObject {
         case .gaussianSplat(let url):
             print("📊 Loading Gaussian Splat from URL: \(url)")
             print("📊 File exists: \(FileManager.default.fileExists(atPath: url.path))")
+            
+            // Store current model URL for origin management
+            currentModelURL = url
+            
             let splat = try SplatRenderer(device: device,
                                           colorFormat: layerRenderer.configuration.colorFormat,
                                           depthFormat: layerRenderer.configuration.depthFormat,
@@ -183,15 +202,26 @@ class VisionSceneRenderer: ObservableObject {
             modelRenderer = splat
             print("✅ Model renderer assigned")
             
-            // Set custom camera position if provided
+            // Set camera position: custom -> saved origin -> default
             if let position = cameraPosition {
                 camera.position = position
+                print("📷 Using custom camera position: \(position)")
+            } else if let savedPose = loadSavedOrigin(for: model!) {
+                camera.position = savedPose.position
+                camera.rotation = savedPose.rotation
+                camera.scale = savedPose.scale
+                print("📷 Using saved origin: pos=\(savedPose.position), rot=\(savedPose.rotation), scale=\(savedPose.scale)")
             } else {
                 // Default position for gaussian splats
                 camera.position = SIMD3<Float>(0, 0, -2.5)
+                print("📷 Using default camera position: \(camera.position)")
             }
         case .sampleBox:
             print("📦 Loading sample box")
+            
+            // Clear model URL since this isn't a PLY file
+            currentModelURL = nil
+            
             do {
                 modelRenderer = try SampleBoxRenderer(device: device,
                                                       colorFormat: layerRenderer.configuration.colorFormat,
@@ -215,6 +245,7 @@ class VisionSceneRenderer: ObservableObject {
             }
         case .none:
             print("⚠️ No model provided")
+            currentModelURL = nil
             break
         }
         print("🎯 VisionSceneRenderer.load completed")
@@ -699,6 +730,35 @@ class VisionSceneRenderer: ObservableObject {
         shouldStopRendering = true
         arTask?.cancel()
         arTask = nil
+    }
+    
+    // MARK: - Origin Management
+    
+    @MainActor
+    func setOriginForCurrentModel() {
+        guard let url = currentModelURL else {
+            print("⚠️ No current model URL to save origin for")
+            return
+        }
+        
+        let pose = SavedCameraPose(
+            position: camera.position,
+            rotation: camera.rotation,
+            scale: camera.scale
+        )
+        
+        PoseStore.save(pose: pose, for: url)
+        
+        // Post notification for UI feedback
+        NotificationCenter.default.post(
+            name: NSNotification.Name("OriginSaved"),
+            object: nil
+        )
+    }
+    
+    private func loadSavedOrigin(for modelIdentifier: ModelIdentifier) -> SavedCameraPose? {
+        guard case .gaussianSplat(let url) = modelIdentifier else { return nil }
+        return PoseStore.load(for: url)
     }
     
     deinit {

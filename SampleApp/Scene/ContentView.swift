@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var isPickingFile = false
     @State private var usePreprocessComputeShader = false
     @State private var isLoadingModel = false
+    @State private var showOriginSavedMessage = false
 
 #if os(macOS)
     @Environment(\.openWindow) private var openWindow
@@ -137,6 +138,14 @@ struct ContentView: View {
                 }
             }
             .disabled(!immersiveSpaceIsShown || isLoadingModel)
+            
+            Button("Set new origin") {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("SetNewOrigin"),
+                    object: nil
+                )
+            }
+            .disabled(!immersiveSpaceIsShown || isLoadingModel)
 #endif
 
             Toggle("Use Preprocess Compute Shader", isOn: $usePreprocessComputeShader)
@@ -144,6 +153,32 @@ struct ContentView: View {
                 .padding(.horizontal)
         }
         .padding(30)
+        .overlay(
+            // Origin saved feedback message
+            Group {
+                if showOriginSavedMessage {
+                    Text("New origin saved!")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.green.opacity(0.8))
+                        .cornerRadius(10)
+                        .transition(.opacity)
+                }
+            }
+        )
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OriginSaved"))) { _ in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showOriginSavedMessage = true
+            }
+            
+            // Hide message after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    showOriginSavedMessage = false
+                }
+            }
+        }
     }
 }
 

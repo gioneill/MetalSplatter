@@ -1,8 +1,15 @@
 import Foundation
+import simd
 
 struct ModelConfiguration: Equatable, Hashable, Codable {
     let modelIdentifier: ModelIdentifier
     let usePreprocessComputeShader: Bool
+}
+
+struct SavedCameraPose: Codable {
+    var position: SIMD3<Float>
+    var rotation: simd_quatf
+    var scale: Float
 }
 
 enum ModelIdentifier: Equatable, Hashable, Codable, CustomStringConvertible {
