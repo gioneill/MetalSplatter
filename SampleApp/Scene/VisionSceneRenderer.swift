@@ -378,14 +378,20 @@ class VisionSceneRenderer: ObservableObject {
             switch handAnchor.event {
             case .added, .updated:
                 let hand = handAnchor.anchor
-                print("[GESTURE] 👋 Hand \(hand.chirality) - isTracked: \(hand.isTracked) (Event: \(handAnchor.event))")
+                if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                    print("[GESTURE] 👋 Hand \(hand.chirality) - isTracked: \(hand.isTracked) (Event: \(handAnchor.event))")
+                    lastGestureLogTime = latestPresentationTime
+                }
                 
                 if hand.isTracked {
                     // Get current device anchor for transformation
                     _ = worldTracking.queryDeviceAnchor(atTimestamp: latestPresentationTime)
                     processHandPinch(hand)
                 } else {
-                    print("[GESTURE] ⚠️ Hand \(hand.chirality) is not tracked, skipping pinch processing.")
+                    if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                        print("[GESTURE] ⚠️ Hand \(hand.chirality) is not tracked, skipping pinch processing.")
+                        lastGestureLogTime = latestPresentationTime
+                    }
                     resetHandState(hand.chirality)
                 }
                 
@@ -404,7 +410,11 @@ class VisionSceneRenderer: ObservableObject {
     
     @MainActor
     private func processHandPinch(_ hand: HandAnchor) {
-        print("[GESTURE] 🖐️ processHandPinch called for \(hand.chirality) hand")
+        if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+            print("[GESTURE] 🖐️ processHandPinch called for \(hand.chirality) hand")
+            print("[GESTURE] 📍 Hand joints - thumbTip tracked: \(thumbTip.isTracked), indexTip tracked: \(indexTip.isTracked)")
+            lastGestureLogTime = latestPresentationTime
+        }
         
         guard let skeleton = hand.handSkeleton else { 
             print("[GESTURE] ❌ No hand skeleton available for \(hand.chirality) hand")
@@ -413,8 +423,6 @@ class VisionSceneRenderer: ObservableObject {
         
         let thumbTip = skeleton.joint(.thumbTip)
         let indexTip = skeleton.joint(.indexFingerTip)
-        
-        print("[GESTURE] 📍 Hand joints - thumbTip tracked: \(thumbTip.isTracked), indexTip tracked: \(indexTip.isTracked)")
         
         guard thumbTip.isTracked && indexTip.isTracked else {
             // Increment tracking failure counter instead of immediate reset
@@ -553,8 +561,9 @@ class VisionSceneRenderer: ObservableObject {
                 camera.translate(by: blended)
                 lastAppliedTranslation = blended
                 
-                if frameCount % 60 == 0 {
+                if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
                     print("[GESTURE] 👋 Left pinch move: \(translation)")
+                    lastGestureLogTime = latestPresentationTime
                 }
             } else {
                 print("[GESTURE] 📍 First left hand pinch position recorded")
@@ -608,8 +617,9 @@ class VisionSceneRenderer: ObservableObject {
         // Instead of just setting scale, we need to scale around the user's viewpoint
         setPerspectiveCenteredScale(smoothed)
         
-        if frameCount % 30 == 0 {
+        if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
             print("[GESTURE] 🎯 Two-handed ZOOM: currentDist=\(currentDist*100)cm, ratio=\(ratio), target=\(targetScale), smoothed=\(smoothed)")
+            lastGestureLogTime = latestPresentationTime
         }
     }
     
@@ -877,8 +887,9 @@ class VisionSceneRenderer: ObservableObject {
         // Apply perspective-centered scaling
         camera.setPerspectiveCenteredScale(newScale, around: scalingCenter)
         
-        if frameCount % 30 == 0 {
+        if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
             print("[GESTURE] 🎯 Perspective-centered scale: \(newScale), center: \(scalingCenter)")
+            lastGestureLogTime = latestPresentationTime
         }
     }
     
