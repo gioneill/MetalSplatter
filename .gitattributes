@@ -1,0 +1,2 @@
+SampleApp/wedding-venue.ply filter=lfs diff=lfs merge=lfs -text
+SampleApp/RV.ply filter=lfs diff=lfs merge=lfs -text
