@@ -77,8 +77,8 @@ class SimplePinchState {
     var initialScale: Float?
     var isRightPinching = false
     var isLeftPinching  = false
-    let pinchStartThreshold:  Float = 0.005   // start when ≤ 0.5 cm
-let pinchReleaseThreshold: Float = 0.007  // release when > 0.7 cm
+    let pinchStartThreshold:  Float = 0.02   // start when ≤ 2.0 cm
+    let pinchReleaseThreshold: Float = 0.025  // release when > 2.5 cm
     
     // Joint tracking stability
     var rightTrackingFailures = 0
