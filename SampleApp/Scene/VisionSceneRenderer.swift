@@ -52,6 +52,20 @@ struct Camera {
     mutating func setScale(_ newScale: Float) {
         scale = max(0.1, min(10.0, newScale)) // Clamp between 0.1 and 10.0
     }
+    
+    mutating func setPerspectiveCenteredScale(_ newScale: Float, around center: SIMD3<Float>) {
+        let clampedScale = max(0.1, min(10.0, newScale))
+        let scaleChange = clampedScale / scale
+        
+        // Calculate offset from center to current position
+        let offset = position - center
+        
+        // Scale the offset and update position
+        position = center + offset * scaleChange
+        
+        // Set the new scale
+        scale = clampedScale
+    }
 }
 
 class SimplePinchState {
@@ -577,7 +591,10 @@ class VisionSceneRenderer: ObservableObject {
         // Add mild smoothing to scale
         let t: Float = 0.2 // 0..1
         let smoothed = camera.scale + (targetScale - camera.scale) * t
-        camera.setScale(smoothed)   // scale scene from baseline
+        
+        // Implement perspective-centered scaling
+        // Instead of just setting scale, we need to scale around the user's viewpoint
+        setPerspectiveCenteredScale(smoothed)
         
         if frameCount % 30 == 0 {
             print("[GESTURE] 🎯 Two-handed ZOOM: currentDist=\(currentDist*100)cm, ratio=\(ratio), target=\(targetScale), smoothed=\(smoothed)")
@@ -787,11 +804,18 @@ class VisionSceneRenderer: ObservableObject {
             return
         }
         
+        print("📍 Setting origin for model URL: \(url)")
+        print("📍 URL type: \(url.isFileURL ? "File URL" : "Other URL")")
+        print("📍 URL path: \(url.path)")
+        print("📍 Is bundle resource: \(url.path.contains(Bundle.main.bundlePath))")
+        
         let pose = SavedCameraPose(
             position: camera.position,
             rotation: camera.rotation,
             scale: camera.scale
         )
+        
+        print("📍 Saving pose - position: \(pose.position), rotation: \(pose.rotation), scale: \(pose.scale)")
         
         PoseStore.save(pose: pose, for: url)
         
@@ -803,8 +827,47 @@ class VisionSceneRenderer: ObservableObject {
     }
     
     private func loadSavedOrigin(for modelIdentifier: ModelIdentifier) -> SavedCameraPose? {
-        guard case .gaussianSplat(let url) = modelIdentifier else { return nil }
-        return PoseStore.load(for: url)
+        guard case .gaussianSplat(let url) = modelIdentifier else { 
+            print("📍 loadSavedOrigin: Not a gaussian splat model")
+            return nil 
+        }
+        
+        print("📍 Loading saved origin for URL: \(url)")
+        print("📍 URL path: \(url.path)")
+        
+        let savedPose = PoseStore.load(for: url)
+        if let pose = savedPose {
+            print("📍 Found saved origin - position: \(pose.position), rotation: \(pose.rotation), scale: \(pose.scale)")
+        } else {
+            print("📍 No saved origin found for this model")
+        }
+        
+        return savedPose
+    }
+    
+    // MARK: - Perspective-Centered Scaling
+    
+    @MainActor
+    private func setPerspectiveCenteredScale(_ newScale: Float) {
+        // Calculate the center point for scaling (user's perspective)
+        // In visionOS, the user's viewpoint is effectively at the camera position
+        // We want to scale around a point in front of the user at a reasonable distance
+        
+        // Calculate the camera's forward direction using its rotation
+        let forwardInCameraSpace = SIMD3<Float>(0, 0, -2.0) // 2 meters forward in camera space
+        let rotationMatrix = simd_float4x4(camera.rotation)
+        let forwardVector = rotationMatrix * SIMD4<Float>(forwardInCameraSpace, 0)
+        let forwardInWorldSpace = SIMD3<Float>(forwardVector.x, forwardVector.y, forwardVector.z)
+        
+        // Scaling center is in front of the camera in the direction it's facing
+        let scalingCenter = camera.position + forwardInWorldSpace
+        
+        // Apply perspective-centered scaling
+        camera.setPerspectiveCenteredScale(newScale, around: scalingCenter)
+        
+        if frameCount % 30 == 0 {
+            print("[GESTURE] 🎯 Perspective-centered scale: \(newScale), center: \(scalingCenter)")
+        }
     }
     
     deinit {
