@@ -77,13 +77,22 @@ class SimplePinchState {
     var initialScale: Float?
     var isRightPinching = false
     var isLeftPinching  = false
-    let pinchStartThreshold:  Float = 0.02   // start when ≤ 2.0 cm
-    let pinchReleaseThreshold: Float = 0.025  // release when > 2.5 cm
+    let pinchStartThreshold:  Float = 0.02  // cm
+    let pinchReleaseThreshold: Float = 0.025
     
     // Joint tracking stability
     var rightTrackingFailures = 0
     var leftTrackingFailures = 0
-    let maxTrackingFailures = 3  // Allow 3 failed frames before reset
+    let maxTrackingFailures = 1200  // ~10 seconds at 120fps for joint recovery
+    let maxTrackingFailuresNoHandAnchor = 3  // Strict limit when hand anchor itself is lost
+    
+    // Hand initialization tracking
+    var rightHandSeen = false
+    var leftHandSeen = false
+    
+    // Joint recovery state
+    var rightJointsLost = false
+    var leftJointsLost = false
     
     // Sensitivity settings
     let translationScale: Float = 3.0  // Increased for better movement
@@ -97,6 +106,10 @@ class SimplePinchState {
         isLeftPinching = false
         rightTrackingFailures = 0
         leftTrackingFailures = 0
+        rightHandSeen = false
+        leftHandSeen = false
+        rightJointsLost = false
+        leftJointsLost = false
     }
 }
 
@@ -139,6 +152,7 @@ class VisionSceneRenderer: ObservableObject {
     private var gestureState = SimplePinchState()
     private var frameCount = 0
     private var shouldStopRendering = false
+    private var bothHandsInitialized = false
     private var lastLoggedCameraPosition: SIMD3<Float>?
     private var lastLoggedCameraRotation: simd_quatf?
     private var lastLoggedCameraScale: Float?
@@ -384,20 +398,87 @@ class VisionSceneRenderer: ObservableObject {
                 }
                 
                 if hand.isTracked {
+                    // Track that we've seen this hand
+                    switch hand.chirality {
+                    case .right:
+                        if !gestureState.rightHandSeen {
+                            gestureState.rightHandSeen = true
+                            print("[GESTURE] ✅ Right hand now tracked and initialized")
+                        }
+                    case .left:
+                        if !gestureState.leftHandSeen {
+                            gestureState.leftHandSeen = true
+                            print("[GESTURE] ✅ Left hand now tracked and initialized")
+                        }
+                    @unknown default:
+                        break
+                    }
+                    
+                    // Check if both hands are now initialized
+                    if !bothHandsInitialized && gestureState.rightHandSeen && gestureState.leftHandSeen {
+                        bothHandsInitialized = true
+                        print("[GESTURE] 🎉 Both hands initialized - enabling gesture processing")
+                    }
+                    
                     // Get current device anchor for transformation
                     _ = worldTracking.queryDeviceAnchor(atTimestamp: latestPresentationTime)
                     processHandPinch(hand)
                 } else {
+                    // Hand anchor itself is not tracked - use strict limit
                     if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
-                        print("[GESTURE] ⚠️ Hand \(hand.chirality) is not tracked, skipping pinch processing.")
+                        print("[GESTURE] ⚠️ Hand \(hand.chirality) anchor is not tracked, skipping pinch processing.")
                         lastGestureLogTime = latestPresentationTime
                     }
-                    resetHandState(hand.chirality)
+                    
+                    switch hand.chirality {
+                    case .right:
+                        gestureState.rightTrackingFailures += 1
+                        if gestureState.rightTrackingFailures >= gestureState.maxTrackingFailuresNoHandAnchor {
+                            print("[GESTURE] ❌ Right hand anchor lost - full reset")
+                            resetHandState(hand.chirality, preserveInitialization: false)
+                            // Check if we need to reset bothHandsInitialized
+                            if !gestureState.leftHandSeen || !gestureState.rightHandSeen {
+                                bothHandsInitialized = false
+                                print("[GESTURE] 🔄 Hand lost - resetting initialization state")
+                            }
+                        } else {
+                            print("[GESTURE] ⚠️ Right hand anchor not tracked (\(gestureState.rightTrackingFailures)/\(gestureState.maxTrackingFailuresNoHandAnchor))")
+                        }
+                    case .left:
+                        gestureState.leftTrackingFailures += 1
+                        if gestureState.leftTrackingFailures >= gestureState.maxTrackingFailuresNoHandAnchor {
+                            print("[GESTURE] ❌ Left hand anchor lost - full reset")
+                            resetHandState(hand.chirality, preserveInitialization: false)
+                            // Check if we need to reset bothHandsInitialized
+                            if !gestureState.leftHandSeen || !gestureState.rightHandSeen {
+                                bothHandsInitialized = false
+                                print("[GESTURE] 🔄 Hand lost - resetting initialization state")
+                            }
+                        } else {
+                            print("[GESTURE] ⚠️ Left hand anchor not tracked (\(gestureState.leftTrackingFailures)/\(gestureState.maxTrackingFailuresNoHandAnchor))")
+                        }
+                    @unknown default:
+                        break
+                    }
                 }
                 
             case .removed:
                 print("[GESTURE] 👋 Hand removed: \(handAnchor.anchor.chirality)")
-                resetHandState(handAnchor.anchor.chirality)
+                resetHandState(handAnchor.anchor.chirality, preserveInitialization: false)
+                // Update initialization state when hand is completely removed
+                switch handAnchor.anchor.chirality {
+                case .right:
+                    gestureState.rightHandSeen = false
+                case .left:
+                    gestureState.leftHandSeen = false
+                @unknown default:
+                    break
+                }
+                // Check if we need to reset bothHandsInitialized
+                if !gestureState.leftHandSeen || !gestureState.rightHandSeen {
+                    bothHandsInitialized = false
+                    print("[GESTURE] 🔄 Hand removed - resetting initialization state")
+                }
             }
         }
         
@@ -420,30 +501,53 @@ class VisionSceneRenderer: ObservableObject {
             return 
         }
         
+        // Don't process gestures until both hands have been initialized
+        guard bothHandsInitialized else {
+            if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                print("[GESTURE] ⏳ Waiting for both hands to be initialized before processing gestures")
+                lastGestureLogTime = latestPresentationTime
+            }
+            return
+        }
+        
         let thumbTip = skeleton.joint(.thumbTip)
         let indexTip = skeleton.joint(.indexFingerTip)
         
-        print("[GESTURE] 📍 Hand joints - thumbTip tracked: \(thumbTip.isTracked), indexTip tracked: \(indexTip.isTracked)")
+        // Enhanced logging for joint tracking
+        let jointsTracked = thumbTip.isTracked && indexTip.isTracked
+        if !jointsTracked && latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+            print("[GESTURE] 🔍 \(hand.chirality) hand: anchor tracked=true, thumb tracked=\(thumbTip.isTracked), index tracked=\(indexTip.isTracked)")
+            lastGestureLogTime = latestPresentationTime
+        }
         
-        guard thumbTip.isTracked && indexTip.isTracked else {
-            
-            // Increment tracking failure counter instead of immediate reset
+        guard jointsTracked else {
+            // Handle joint tracking loss with recovery
             switch hand.chirality {
             case .right:
+                if !gestureState.rightJointsLost {
+                    gestureState.rightJointsLost = true
+                    print("[GESTURE] ⚠️ Right hand joints lost but hand still visible - entering recovery mode")
+                }
                 gestureState.rightTrackingFailures += 1
                 if gestureState.rightTrackingFailures >= gestureState.maxTrackingFailures {
-                    print("[GESTURE] ⚠️ Right hand tracking failed \(gestureState.rightTrackingFailures) times - resetting state")
+                    print("[GESTURE] ⏰ Right hand joints lost for >10 seconds - resetting state")
                     resetHandState(hand.chirality)
-                } else {
-                    print("[GESTURE] ⚠️ Right hand joints not tracked (\(gestureState.rightTrackingFailures)/\(gestureState.maxTrackingFailures)) - waiting")
+                } else if gestureState.rightTrackingFailures % 120 == 0 { // Log every ~1 second
+                    let secondsLost = gestureState.rightTrackingFailures / 120
+                    print("[GESTURE] ⏳ Right hand joints lost for \(secondsLost)s - waiting for recovery...")
                 }
             case .left:
+                if !gestureState.leftJointsLost {
+                    gestureState.leftJointsLost = true
+                    print("[GESTURE] ⚠️ Left hand joints lost but hand still visible - entering recovery mode")
+                }
                 gestureState.leftTrackingFailures += 1
                 if gestureState.leftTrackingFailures >= gestureState.maxTrackingFailures {
-                    print("[GESTURE] ⚠️ Left hand tracking failed \(gestureState.leftTrackingFailures) times - resetting state")
+                    print("[GESTURE] ⏰ Left hand joints lost for >10 seconds - resetting state")
                     resetHandState(hand.chirality)
-                } else {
-                    print("[GESTURE] ⚠️ Left hand joints not tracked (\(gestureState.leftTrackingFailures)/\(gestureState.maxTrackingFailures)) - waiting")
+                } else if gestureState.leftTrackingFailures % 120 == 0 { // Log every ~1 second
+                    let secondsLost = gestureState.leftTrackingFailures / 120
+                    print("[GESTURE] ⏳ Left hand joints lost for \(secondsLost)s - waiting for recovery...")
                 }
             @unknown default:
                 break
@@ -451,11 +555,19 @@ class VisionSceneRenderer: ObservableObject {
             return
         }
         
-        // Reset tracking failure counters on successful tracking
+        // Joints are tracked - check if we're recovering
         switch hand.chirality {
         case .right:
+            if gestureState.rightJointsLost {
+                print("[GESTURE] ✅ Right hand joints recovered after \(gestureState.rightTrackingFailures) frames!")
+                gestureState.rightJointsLost = false
+            }
             gestureState.rightTrackingFailures = 0
         case .left:
+            if gestureState.leftJointsLost {
+                print("[GESTURE] ✅ Left hand joints recovered after \(gestureState.leftTrackingFailures) frames!")
+                gestureState.leftJointsLost = false
+            }
             gestureState.leftTrackingFailures = 0
         @unknown default:
             break
@@ -652,16 +764,24 @@ class VisionSceneRenderer: ObservableObject {
         return SIMD3<Float>(worldPos.x, worldPos.y, worldPos.z)
     }
     
-    private func resetHandState(_ chirality: HandAnchor.Chirality) {
+    private func resetHandState(_ chirality: HandAnchor.Chirality, preserveInitialization: Bool = true) {
         switch chirality {
         case .right:
             gestureState.lastRightPinchPosition = nil
             gestureState.isRightPinching = false
             gestureState.rightTrackingFailures = 0
+            gestureState.rightJointsLost = false
+            if !preserveInitialization {
+                gestureState.rightHandSeen = false
+            }
         case .left:
             gestureState.lastLeftPinchPosition = nil
             gestureState.isLeftPinching = false
             gestureState.leftTrackingFailures = 0
+            gestureState.leftJointsLost = false
+            if !preserveInitialization {
+                gestureState.leftHandSeen = false
+            }
         @unknown default:
             break
         }
