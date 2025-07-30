@@ -712,25 +712,32 @@ class VisionSceneRenderer: ObservableObject {
     @MainActor
     private func handlePinchMovement(hand: HandAnchor) {
         print("[GESTURE] 🎯 handlePinchMovement called for \(hand.chirality) hand")
-        
+
         let currentPinchPos = getPinchWorldPosition(hand: hand)
         print("[GESTURE] 📍 Current pinch position: \(currentPinchPos)")
-        
+        let now = latestPresentationTime
+
         switch hand.chirality {
         case .right:
-            print("[GESTURE] ➡️ Processing right hand movement")
+            if now - lastGestureLogTimeRight > gestureLogInterval {
+                print("[GESTURE] ➡️ Processing right hand movement")
+                lastGestureLogTimeRight = now
+            }
             if let lastPos = gestureState.lastRightPinchPosition {
                 var delta = currentPinchPos - lastPos
                 let mag = simd_length(delta)
                 if mag > maxPinchDeltaPerFrame {
                     let scale = maxPinchDeltaPerFrame / max(mag, 1e-6)
                     delta *= scale
-                    if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                    if now - lastGestureLogTimeRight > gestureLogInterval {
                         print("[GESTURE] 🚧 Right delta clamped from |\(mag)|m to \(maxPinchDeltaPerFrame)m: \(delta)")
-                        lastGestureLogTime = latestPresentationTime
+                        lastGestureLogTimeRight = now
                     }
                 }
-                print("[GESTURE] 📊 Right hand delta: \(delta)")
+                if now - lastGestureLogTimeRight > gestureLogInterval {
+                    print("[GESTURE] 📊 Right hand delta: \(delta)")
+                    lastGestureLogTimeRight = now
+                }
                 let translation = SIMD3<Float>(
                     delta.x * gestureState.translationScale,
                     delta.y * gestureState.translationScale,
@@ -739,9 +746,9 @@ class VisionSceneRenderer: ObservableObject {
                 let blended = lastAppliedTranslation + (translation - lastAppliedTranslation) * smoothing
                 camera.translate(by: blended)
                 lastAppliedTranslation = blended
-                if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                if now - lastGestureLogTimeRight > gestureLogInterval {
                     print("[GESTURE] 👋 Right pinch move: \(translation)")
-                    lastGestureLogTime = latestPresentationTime
+                    lastGestureLogTimeRight = now
                 }
                 // Adopt clamped position (prevents spike adoption)
                 gestureState.lastRightPinchPosition = lastPos + delta
@@ -749,21 +756,27 @@ class VisionSceneRenderer: ObservableObject {
                 print("[GESTURE] 📍 First right hand pinch position recorded")
                 gestureState.lastRightPinchPosition = currentPinchPos
             }
-            
+
         case .left:
-            print("[GESTURE] ⬅️ Processing left hand movement")
+            if now - lastGestureLogTimeLeft > gestureLogInterval {
+                print("[GESTURE] ⬅️ Processing left hand movement")
+                lastGestureLogTimeLeft = now
+            }
             if let lastPos = gestureState.lastLeftPinchPosition {
                 var delta = currentPinchPos - lastPos
                 let mag = simd_length(delta)
                 if mag > maxPinchDeltaPerFrame {
                     let scale = maxPinchDeltaPerFrame / max(mag, 1e-6)
                     delta *= scale
-                    if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                    if now - lastGestureLogTimeLeft > gestureLogInterval {
                         print("[GESTURE] 🚧 Left delta clamped from |\(mag)|m to \(maxPinchDeltaPerFrame)m: \(delta)")
-                        lastGestureLogTime = latestPresentationTime
+                        lastGestureLogTimeLeft = now
                     }
                 }
-                print("[GESTURE] 📊 Left hand delta: \(delta)")
+                if now - lastGestureLogTimeLeft > gestureLogInterval {
+                    print("[GESTURE] 📊 Left hand delta: \(delta)")
+                    lastGestureLogTimeLeft = now
+                }
                 let translation = SIMD3<Float>(
                     delta.x * gestureState.translationScale,
                     delta.y * gestureState.translationScale,
@@ -772,16 +785,16 @@ class VisionSceneRenderer: ObservableObject {
                 let blended = lastAppliedTranslation + (translation - lastAppliedTranslation) * smoothing
                 camera.translate(by: blended)
                 lastAppliedTranslation = blended
-                if latestPresentationTime - lastGestureLogTime > gestureLogInterval {
+                if now - lastGestureLogTimeLeft > gestureLogInterval {
                     print("[GESTURE] 👋 Left pinch move: \(translation)")
-                    lastGestureLogTime = latestPresentationTime
+                    lastGestureLogTimeLeft = now
                 }
                 gestureState.lastLeftPinchPosition = lastPos + delta
             } else {
                 print("[GESTURE] 📍 First left hand pinch position recorded")
                 gestureState.lastLeftPinchPosition = currentPinchPos
             }
-            
+
         @unknown default:
             print("[GESTURE] ❓ Unknown hand chirality: \(hand.chirality)")
             break
