@@ -18,7 +18,8 @@
       "WebFetch(domain:docs.anthropic.com)",
       "Bash(export DEVELOPER_DIR=/Applications/Xcode-beta.app)",
       "Bash(ls:*)",
-      "Bash(export DEVELOPER_DIR=/Applications/Xcode-26.0.0-Beta.4.app)"
+      "Bash(export DEVELOPER_DIR=/Applications/Xcode-26.0.0-Beta.4.app)",
+      "Bash(alias aic)"
     ],
     "deny": []
   }

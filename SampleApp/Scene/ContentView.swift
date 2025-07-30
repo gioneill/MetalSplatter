@@ -10,8 +10,16 @@ struct ContentView: View {
 
 #if os(macOS)
     @Environment(\.openWindow) private var openWindow
+    
+    init(immersiveSpaceIsShown: Bool = false) {
+        // No-op init for macOS
+    }
 #elseif os(iOS)
     @State private var navigationPath = NavigationPath()
+    
+    init(immersiveSpaceIsShown: Bool = false) {
+        // No-op init for iOS
+    }
 
     private func openWindow(value: ModelConfiguration) {
         navigationPath.append(value)
@@ -21,6 +29,10 @@ struct ContentView: View {
     @Environment(\.dismissImmersiveSpace) var dismissImmersiveSpace
 
     @State var immersiveSpaceIsShown = false
+    
+    init(immersiveSpaceIsShown: Bool = false) {
+        self._immersiveSpaceIsShown = State(initialValue: immersiveSpaceIsShown)
+    }
 
     private func openWindow(value: ModelConfiguration) {
         print("🪟 openWindow called with value: \(value)")
@@ -79,7 +91,6 @@ struct ContentView: View {
             Button("Read Scene File") {
                 isPickingFile = true
             }
-            .padding()
             .buttonStyle(.borderedProminent)
             .disabled(isPickingFile)
 #if os(visionOS)
@@ -112,58 +123,37 @@ struct ContentView: View {
             Button("Show Sample Box") {
                 openWindow(value: ModelConfiguration(modelIdentifier: ModelIdentifier.sampleBox, usePreprocessComputeShader: usePreprocessComputeShader))
             }
-            .padding()
-            .buttonStyle(.borderedProminent)
-#if os(visionOS)
-            .disabled(immersiveSpaceIsShown)
-#endif
-            
-            Button("Show RV Sample") {
-                if let rvModel = ModelIdentifier.rvSample {
-                    openWindow(value: ModelConfiguration(modelIdentifier: rvModel, usePreprocessComputeShader: usePreprocessComputeShader))
-                }
-            }
-            .padding()
-            .buttonStyle(.borderedProminent)
-#if os(visionOS)
-            .disabled(immersiveSpaceIsShown)
-#endif
-            
-            Button("Show Wedding Sample") {
-                if let weddingModel = ModelIdentifier.weddingSample {
-                    openWindow(value: ModelConfiguration(modelIdentifier: weddingModel, usePreprocessComputeShader: usePreprocessComputeShader))
-                }
-            }
-            .padding()
             .buttonStyle(.borderedProminent)
 #if os(visionOS)
             .disabled(immersiveSpaceIsShown)
 #endif
             
 #if os(visionOS)
-            Button("Dismiss Immersive Space") {
-                Task {
-                    await dismissImmersiveSpace()
-                    immersiveSpaceIsShown = false
-                    isLoadingModel = false
+            if immersiveSpaceIsShown {
+                Button("Dismiss Immersive Space") {
+                    Task {
+                        await dismissImmersiveSpace()
+                        immersiveSpaceIsShown = false
+                        isLoadingModel = false
+                    }
                 }
+                .disabled(isLoadingModel)
+                
+                Button("Set new origin") {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("SetNewOrigin"),
+                        object: nil
+                    )
+                }
+                .disabled(isLoadingModel)
             }
-            .disabled(!immersiveSpaceIsShown || isLoadingModel)
-            
-            Button("Set new origin") {
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("SetNewOrigin"),
-                    object: nil
-                )
-            }
-            .disabled(!immersiveSpaceIsShown || isLoadingModel)
 #endif
 
             Toggle("Use Preprocess Compute Shader", isOn: $usePreprocessComputeShader)
                 .frame(width: 500)
                 .padding(.horizontal)
         }
-        .padding(30)
+        .padding()
         .overlay(
             // Origin saved feedback message
             Group {
@@ -194,7 +184,11 @@ struct ContentView: View {
 }
 
 #if os(visionOS) && DEBUG
-#Preview {
+#Preview("Immersive Space Inactive") {
     ContentView()
+}
+
+#Preview("Immersive Space Active") {
+    ContentView(immersiveSpaceIsShown: true)
 }
 #endif

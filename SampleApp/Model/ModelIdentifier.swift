@@ -49,11 +49,4 @@ enum ModelIdentifier: Equatable, Hashable, Codable, CustomStringConvertible {
         case .gaussianSplat(let url): return "content:splat:\(url.lastPathComponent.lowercased())"
         }
     }
-    
-    static var rvSample: ModelIdentifier? {
-        guard let url = Bundle.main.url(forResource: "RV", withExtension: "ply") else {
-            return nil
-        }
-        return .gaussianSplat(url)
-    }
 }
