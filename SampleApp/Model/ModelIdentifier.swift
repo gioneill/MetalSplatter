@@ -51,7 +51,7 @@ enum ModelIdentifier: Equatable, Hashable, Codable, CustomStringConvertible {
     }
     
     static var rvSample: ModelIdentifier? {
-        guard let url = Bundle.main.url(forResource: "RV-compressed", withExtension: "ply") else {
+        guard let url = Bundle.main.url(forResource: "RV", withExtension: "ply") else {
             return nil
         }
         return .gaussianSplat(url)

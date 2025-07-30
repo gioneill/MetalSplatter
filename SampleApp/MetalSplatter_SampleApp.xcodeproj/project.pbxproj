@@ -34,7 +34,7 @@
 		D7052D932E30A18700C31EEE /* SharePlayTestingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D882E30A18700C31EEE /* SharePlayTestingView.swift */; };
 		D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */; };
 		D70D41C12E3939A7003020E4 /* ARUnderstanding in Frameworks */ = {isa = PBXBuildFile; productRef = D70D41C02E3939A7003020E4 /* ARUnderstanding */; };
-		D7B4BCE72E342DF2008913B9 /* RV-compressed.ply in Resources */ = {isa = PBXBuildFile; fileRef = D7B4BCE52E342DF2008913B9 /* RV-compressed.ply */; };
+		D70D41C42E39D4CB003020E4 /* RV.ply in Resources */ = {isa = PBXBuildFile; fileRef = D70D41C32E39D4CB003020E4 /* RV.ply */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -63,7 +63,7 @@
 		D7052D8A2E30A18700C31EEE /* SplatViewingActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatViewingActivity.swift; sourceTree = "<group>"; };
 		D70D41BE2E38882D003020E4 /* MetalSplatter SampleApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "MetalSplatter SampleApp.entitlements"; sourceTree = "<group>"; };
 		D70D41C22E3965AA003020E4 /* MetalSplatter-SampleApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "MetalSplatter-SampleApp-Info.plist"; sourceTree = "<group>"; };
-		D7B4BCE52E342DF2008913B9 /* RV-compressed.ply */ = {isa = PBXFileReference; lastKnownFileType = text; path = "RV-compressed.ply"; sourceTree = "<group>"; };
+		D70D41C32E39D4CB003020E4 /* RV.ply */ = {isa = PBXFileReference; lastKnownFileType = text; path = RV.ply; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,7 +139,7 @@
 				610347E02B468A0000693CE3 /* Scene */,
 				610347DF2B4689DB00693CE3 /* Model */,
 				D7052D8B2E30A18700C31EEE /* SharePlay */,
-				D7B4BCE52E342DF2008913B9 /* RV-compressed.ply */,
+				D70D41C32E39D4CB003020E4 /* RV.ply */,
 				61791DC32B41514300302B57 /* Assets.xcassets */,
 				61E3FD832AE5CB0200032652 /* Products */,
 				619832682AF0BC390022500D /* Frameworks */,
@@ -239,7 +239,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D7B4BCE72E342DF2008913B9 /* RV-compressed.ply in Resources */,
+				D70D41C42E39D4CB003020E4 /* RV.ply in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
