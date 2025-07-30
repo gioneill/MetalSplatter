@@ -29,12 +29,14 @@ struct SampleApp: App {
             CompositorLayer(configuration: ContentStageConfiguration()) { layerRenderer in
                 print("🎨 CompositorLayer created with configuration: \(String(describing: configuration.wrappedValue))")
                 let renderer = VisionSceneRenderer(layerRenderer)
-                
-                // Store the renderer at app level to keep it alive
+
+                // Keep a strong ref
                 currentRenderer = renderer
                 print("🔒 Renderer stored at app level")
-                
+
                 sharePlayIntegration.configureForRenderer(renderer)
+                
+                // Start the rendering pipeline in the CompositorLayer closure
                 Task { @MainActor in
                     print("🔄 Starting model load task...")
                     do {

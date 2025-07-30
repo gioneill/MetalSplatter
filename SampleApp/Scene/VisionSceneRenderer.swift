@@ -14,8 +14,9 @@ import ARUnderstanding
 
 extension LayerRenderer.Clock.Instant.Duration {
     var timeInterval: TimeInterval {
-        let nanoseconds = TimeInterval(components.attoseconds / 1_000_000_000)
-        return TimeInterval(components.seconds) + (nanoseconds / TimeInterval(NSEC_PER_SEC))
+        let secs = TimeInterval(components.seconds)
+        let sub  = Double(components.attoseconds) / 1_000_000_000_000_000_000.0 // 1e18
+        return secs + sub
     }
 }
 
@@ -99,15 +100,22 @@ class VisionSceneRenderer: ObservableObject {
 
     let arSession: ARKitSession
     let worldTracking: WorldTrackingProvider
+    let handTrackingProvider: HandTrackingProvider
     
     var cameraSync: SharePlayCameraSync?
     var sharePlaySessionManager: SharePlaySessionManager?
     
     private var arTask: Task<Void, Never>?
     private var gestureState = SimplePinchState()
-    private var currentDeviceAnchor: CapturedDeviceAnchor?
     private var frameCount = 0
     private var shouldStopRendering = false
+    private var lastLoggedCameraPosition: SIMD3<Float>?
+    private var lastLoggedCameraRotation: simd_quatf?
+    private var lastLoggedCameraScale: Float?
+    private var latestPresentationTime: TimeInterval = 0
+    private var didLogFirstHandUpdate = false
+    private var lastAppliedTranslation = SIMD3<Float>(repeating: 0)
+    private let smoothing: Float = 0.2 // 0..1, higher = snappier
 
     init(_ layerRenderer: LayerRenderer) {
         self.layerRenderer = layerRenderer
@@ -115,6 +123,7 @@ class VisionSceneRenderer: ObservableObject {
         self.commandQueue = self.device.makeCommandQueue()!
 
         worldTracking = WorldTrackingProvider()
+        handTrackingProvider = HandTrackingProvider()
         arSession = ARKitSession()
         
         setupCameraSync()
@@ -203,62 +212,146 @@ class VisionSceneRenderer: ObservableObject {
     }
 
     func startRenderLoop() {
-        print("🏃 Starting render loop with ARUnderstanding and WorldTracking")
-        
-        arTask = Task {
-            do {
-                try await arSession.run([worldTracking])
-            } catch {
-                fatalError("Failed to initialize ARSession")
+        guard arTask == nil else { 
+            print("[GESTURE] ⚠️ Render loop already started.")
+            return
+        }
+
+        arTask = Task { @MainActor in
+            self.shouldStopRendering = false
+            // ➊ Wait for the layer to be running
+            await waitUntilLayerRunning()
+            print("[GESTURE]  Layer is running; starting ARKit providers")
+
+            // First, request authorization from the user.
+            print("[GESTURE] 🔐 Requesting ARKit permissions...")
+            let permissions: [ARKitSession.AuthorizationType] = [.handTracking, .worldSensing]
+            let authStatus = await arSession.requestAuthorization(for: permissions)
+            print("[GESTURE] 📋 Authorization status: \(authStatus)")
+
+            // If we don't have the necessary permissions, we can't proceed.
+            guard authStatus[.handTracking] == .allowed, authStatus[.worldSensing] == .allowed else {
+                print("[GESTURE] ⚠️ Required permissions not granted. Cannot start AR session.")
+                self.arTask = nil
+                return
             }
 
+            // Check if the providers are supported on the current device/environment.
+            guard WorldTrackingProvider.isSupported else {
+                print("[GESTURE] ❌ WorldTrackingProvider is not supported on this device.")
+                self.arTask = nil
+                return
+            }
+            guard HandTrackingProvider.isSupported else {
+                print("[GESTURE] ❌ HandTrackingProvider is not supported on this device.")
+                self.arTask = nil
+                return
+            }
+
+            // Local strong references for ARKit session task
+            let session = self.arSession
+            let world   = self.worldTracking
+            let hands   = self.handTrackingProvider
+
+            // Use a TaskGroup to run the AR session, anchor processing, and render loop concurrently.
             await withTaskGroup(of: Void.self) { group in
+                // Task 1: Run the ARSession. This task runs for the lifetime of the session.
+                group.addTask {
+                    do {
+                        print("[GESTURE] 🔧 Starting ARSession with providers…")
+                        while !Task.isCancelled {
+                            try await session.run([world, hands])
+                            print("[GESTURE] ⚠️ ARSession.run returned; waiting for layer to run, then restarting")
+                            // Give the compositor time and avoid tight spinning
+                            try? await Task.sleep(nanoseconds: 500_000_000) // 500 ms backoff
+                        }
+                    } catch {
+                        print("[GESTURE] ❌ ARSession failed: \(error)")
+                    }
+                }
+
+                // Log session events (errors/interruptions)
+                group.addTask {
+                    for await event in session.events {
+                        print("[GESTURE] ️ Session event: \(event)")
+                    }
+                }
+
+                // Task 2: Process hand tracking updates.
                 group.addTask { [weak self] in
                     await self?.processAllAnchors()
                 }
+
+                // Task 3: Run the render loop.
                 group.addTask { [weak self] in
                     await self?.runRenderLoop()
                 }
             }
         }
     }
+
+    private func waitUntilLayerRunning() async {
+        // Poll a few times per second until the compositor is running.
+        while layerRenderer.state != .running {
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50 ms
+            if shouldStopRendering { return }
+        }
+    }
     
     private func processAllAnchors() async {
-        for await update in ARUnderstanding(providers: [.hands, .device]).anchorUpdates {
-            switch update {
-            case .hand(let handUpdate):
-                if let deviceAnchor = currentDeviceAnchor {
-                    processHandPinch(handUpdate.anchor, deviceAnchor: deviceAnchor)
+        print("[GESTURE] 🔄 Starting processAllAnchors - waiting for hand tracking updates...")
+        
+        print("[GESTURE] 🎯 Starting to listen for hand anchor updates...")
+        
+        // Process hand updates from HandTrackingProvider
+        for await handAnchor in handTrackingProvider.anchorUpdates {
+            if Task.isCancelled { break }
+
+            if !didLogFirstHandUpdate {
+                print("[GESTURE] ✅ Receiving hand updates")
+                didLogFirstHandUpdate = true
+            }
+
+            switch handAnchor.event {
+            case .added, .updated:
+                let hand = handAnchor.anchor
+                if frameCount % 30 == 0 {
+                    print("[GESTURE] 👋 Hand \(hand.chirality) - isTracked: \(hand.isTracked)")
                 }
-            case .device(let deviceUpdate):
-                currentDeviceAnchor = deviceUpdate.anchor
-            default:
-                break
+                
+                // Get current device anchor for transformation
+                _ = worldTracking.queryDeviceAnchor(atTimestamp: latestPresentationTime)
+                processHandPinch(hand)
+                
+            case .removed:
+                print("[GESTURE] 👋 Hand removed: \(handAnchor.anchor.chirality)")
+                resetHandState(handAnchor.anchor.chirality)
             }
         }
+        
+        print("[GESTURE] ⚠️ processAllAnchors loop ended - this should not happen during normal operation")
     }
     
     private func runRenderLoop() async {
-        let renderThread = Thread { [self] in
-            print("🎬 Render thread started - inside thread closure")
-            print("🎬 About to call renderLoop")
-            Task { @MainActor in
-                self.renderLoop()
-            }
-            print("🎬 Render loop exited")
-        }
-        renderThread.name = "Render Thread"
-        renderThread.start()
-        print("🎬 Render thread start() called")
+        await renderLoop()
     }
     
     @MainActor
-    private func processHandPinch(_ hand: CapturedHandAnchor, deviceAnchor: CapturedDeviceAnchor) {
-        guard let skeleton = hand.handSkeleton else { return }
+    private func processHandPinch(_ hand: HandAnchor) {
+        print("[GESTURE] 🖐️ processHandPinch called for \(hand.chirality) hand")
+        
+        guard let skeleton = hand.handSkeleton else { 
+            print("[GESTURE] ❌ No hand skeleton available for \(hand.chirality) hand")
+            return 
+        }
         
         let thumbTip = skeleton.joint(.thumbTip)
         let indexTip = skeleton.joint(.indexFingerTip)
+        
+        print("[GESTURE] 📍 Hand joints - thumbTip tracked: \(thumbTip.isTracked), indexTip tracked: \(indexTip.isTracked)")
+        
         guard thumbTip.isTracked && indexTip.isTracked else {
+            print("[GESTURE] ⚠️ Hand joints not tracked for \(hand.chirality) hand - resetting state")
             resetHandState(hand.chirality)
             return
         }
@@ -272,10 +365,15 @@ class VisionSceneRenderer: ObservableObject {
                                    indexTip.anchorFromJointTransform.columns.3.z)
         
         let pinchDistance = simd_distance(thumbPos, indexPos)
+        let threshold = gestureState.pinchThreshold
         
-        if pinchDistance < gestureState.pinchThreshold {
-            handlePinchMovement(hand: hand, deviceAnchor: deviceAnchor)
+        print("[GESTURE] 🤏 \(hand.chirality) hand pinch distance: \(pinchDistance), threshold: \(threshold)")
+        
+        if pinchDistance < threshold {
+            print("[GESTURE] ✅ \(hand.chirality) hand is pinching - handling movement")
+            handlePinchMovement(hand: hand)
         } else {
+            print("[GESTURE] ❌ \(hand.chirality) hand not pinching - resetting state")
             resetHandState(hand.chirality)
         }
         
@@ -284,13 +382,18 @@ class VisionSceneRenderer: ObservableObject {
     }
     
     @MainActor
-    private func handlePinchMovement(hand: CapturedHandAnchor, deviceAnchor: CapturedDeviceAnchor) {
-        let currentPinchPos = getPinchWorldPosition(hand: hand, deviceAnchor: deviceAnchor)
+    private func handlePinchMovement(hand: HandAnchor) {
+        print("[GESTURE] 🎯 handlePinchMovement called for \(hand.chirality) hand")
+        
+        let currentPinchPos = getPinchWorldPosition(hand: hand)
+        print("[GESTURE] 📍 Current pinch position: \(currentPinchPos)")
         
         switch hand.chirality {
         case .right:
+            print("[GESTURE] ➡️ Processing right hand movement")
             if let lastPos = gestureState.lastRightPinchPosition {
                 let delta = currentPinchPos - lastPos
+                print("[GESTURE] 📊 Right hand delta: \(delta)")
                 
                 // Pure 3-axis translation only
                 let translation = SIMD3<Float>(
@@ -299,17 +402,23 @@ class VisionSceneRenderer: ObservableObject {
                     delta.z * gestureState.translationScale   // Forward/Back
                 )
                 
-                camera.translate(by: translation)
+                let blended = lastAppliedTranslation + (translation - lastAppliedTranslation) * smoothing
+                camera.translate(by: blended)
+                lastAppliedTranslation = blended
                 
-                if frameCount % 30 == 0 {
-                    print("👋 Right pinch move: \(translation)")
+                if frameCount % 60 == 0 {
+                    print("[GESTURE] 👋 Right pinch move: \(translation)")
                 }
+            } else {
+                print("[GESTURE] 📍 First right hand pinch position recorded")
             }
             gestureState.lastRightPinchPosition = currentPinchPos
             
         case .left:
+            print("[GESTURE] ⬅️ Processing left hand movement")
             if let lastPos = gestureState.lastLeftPinchPosition {
                 let delta = currentPinchPos - lastPos
+                print("[GESTURE] 📊 Left hand delta: \(delta)")
                 
                 // Left hand also does pure 3-axis translation
                 let translation = SIMD3<Float>(
@@ -318,15 +427,20 @@ class VisionSceneRenderer: ObservableObject {
                     delta.z * gestureState.translationScale
                 )
                 
-                camera.translate(by: translation)
+                let blended = lastAppliedTranslation + (translation - lastAppliedTranslation) * smoothing
+                camera.translate(by: blended)
+                lastAppliedTranslation = blended
                 
-                if frameCount % 30 == 0 {
-                    print("👋 Left pinch move: \(translation)")
+                if frameCount % 60 == 0 {
+                    print("[GESTURE] 👋 Left pinch move: \(translation)")
                 }
+            } else {
+                print("[GESTURE] 📍 First left hand pinch position recorded")
             }
             gestureState.lastLeftPinchPosition = currentPinchPos
             
         @unknown default:
+            print("[GESTURE] ❓ Unknown hand chirality: \(hand.chirality)")
             break
         }
     }
@@ -342,15 +456,16 @@ class VisionSceneRenderer: ObservableObject {
         let currentDistance = simd_distance(rightPos, leftPos)
         
         if let initialDistance = gestureState.initialTwoHandDistance {
-            let scaleRatio = currentDistance / initialDistance
-            let newScale = camera.scale * scaleRatio
-            camera.setScale(newScale)
-            
-            if frameCount % 30 == 0 {
-                print("🤏 Two-handed scale: \(scaleRatio), new scale: \(newScale)")
+            if initialDistance > 0 {
+                let scaleRatio = currentDistance / initialDistance
+                let newScale = camera.scale * scaleRatio
+                camera.setScale(newScale)
+                
+                if frameCount % 30 == 0 {
+                    print("🤏 Two-handed scale: \(scaleRatio), new scale: \(newScale)")
+                }
             }
-            
-            gestureState.initialTwoHandDistance = currentDistance
+            // Only update the initial distance when the gesture starts
         } else {
             gestureState.initialTwoHandDistance = currentDistance
         }
@@ -362,7 +477,7 @@ class VisionSceneRenderer: ObservableObject {
         cameraSync?.sendCameraUpdate(position: camera.position, rotation: camera.rotation)
     }
     
-    private func getPinchWorldPosition(hand: CapturedHandAnchor, deviceAnchor: CapturedDeviceAnchor) -> SIMD3<Float> {
+    private func getPinchWorldPosition(hand: HandAnchor) -> SIMD3<Float> {
         guard let skeleton = hand.handSkeleton else {
             return SIMD3<Float>(0, 0, 0)
         }
@@ -377,7 +492,7 @@ class VisionSceneRenderer: ObservableObject {
                        SIMD3<Float>(indexPos.x, indexPos.y, indexPos.z)) / 2.0
         
         // Transform to world space
-        let handWorldTransform = deviceAnchor.originFromAnchorTransform * hand.originFromAnchorTransform
+        let handWorldTransform = hand.originFromAnchorTransform
         let worldPos = handWorldTransform * SIMD4<Float>(pinchPos.x, pinchPos.y, pinchPos.z, 1.0)
         
         return SIMD3<Float>(worldPos.x, worldPos.y, worldPos.z)
@@ -450,10 +565,11 @@ class VisionSceneRenderer: ObservableObject {
         frame.startSubmission()
 
         let time = LayerRenderer.Clock.Instant.epoch.duration(to: drawable.frameTiming.presentationTime).timeInterval
+        self.latestPresentationTime = time
         let deviceAnchor = worldTracking.queryDeviceAnchor(atTimestamp: time)
         drawable.deviceAnchor = deviceAnchor
         
-        // Hand gesture processing is now handled asynchronously in processHandGestures()
+        // Hand gesture processing is handled asynchronously in processAllAnchors()
 
         let semaphore = inFlightSemaphore
         commandBuffer.addCompletedHandler { (_ commandBuffer)-> Swift.Void in
@@ -463,19 +579,28 @@ class VisionSceneRenderer: ObservableObject {
         let viewports = self.viewports(drawable: drawable, deviceAnchor: deviceAnchor)
 
         frameCount += 1
-        if frameCount == 1 || frameCount % 60 == 0 {  // Log first frame and every 60 frames
-            print("🎞️ Frame \(frameCount): Successfully got drawable and viewports")
-            print("🎞️ Model renderer: \(modelRenderer != nil ? "Present" : "nil")")
+        
+        // Log camera changes
+        let cameraChanged = lastLoggedCameraPosition != camera.position ||
+                          lastLoggedCameraRotation != camera.rotation ||
+                          lastLoggedCameraScale != camera.scale
+        
+        if cameraChanged {
+            print("[GESTURE] 📷 Camera changed at frame \(frameCount):")
+            print("[GESTURE]   Position: \(camera.position)")
+            print("[GESTURE]   Rotation: \(camera.rotation)")
+            print("[GESTURE]   Scale: \(camera.scale)")
+            lastLoggedCameraPosition = camera.position
+            lastLoggedCameraRotation = camera.rotation
+            lastLoggedCameraScale = camera.scale
+        }
+        
+        // Log initial frame info
+        if frameCount == 1 {
+            print("🎬 First frame rendered")
+            print("  Model: \(modelRenderer != nil ? "Loaded" : "Not loaded")")
             if let splat = modelRenderer as? SplatRenderer {
-                print("🎞️ Splat points: \(splat.splatCount)")
-            } else if modelRenderer != nil {
-                print("🎞️ Model renderer type: \(type(of: modelRenderer!))")
-            }
-            print("📷 Camera position: \(camera.position), rotation: \(camera.rotation), scale: \(camera.scale)")
-            print("📐 Viewports count: \(viewports.count)")
-            if !viewports.isEmpty {
-                print("📐 First viewport screen size: \(viewports[0].screenSize)")
-                print("📐 First viewport MTL viewport: \(viewports[0].viewport)")
+                print("  Splat points: \(splat.splatCount)")
             }
         }
         
@@ -505,38 +630,28 @@ class VisionSceneRenderer: ObservableObject {
         frame.endSubmission()
     }
 
-    func renderLoop() {
-        print("🔄 Render loop started")
+    func renderLoop() async {
         var loopCount = 0
         while !shouldStopRendering {
             loopCount += 1
-            if loopCount == 1 || loopCount % 100 == 0 {
-                print("🔄 Render loop iteration \(loopCount), layer state: \(layerRenderer.state)")
-            }
             
             if layerRenderer.state == .invalidated {
-                print("❌ Layer is invalidated, stopping render loop")
                 Self.log.warning("Layer is invalidated")
                 return
             } else if layerRenderer.state == .paused {
-                if loopCount == 1 || loopCount % 100 == 0 {
-                    print("⏸️ LayerRenderer is paused at iteration \(loopCount), waiting...")
-                }
                 layerRenderer.waitUntilRunning()
                 continue
             } else {
-                if loopCount == 1 {
-                    print("✅ LayerRenderer is running, calling renderFrame")
-                }
                 autoreleasepool {
                     self.renderFrame()
                 }
+                await Task.yield()
             }
         }
-        print("🔄 Render loop stopped")
     }
     
     func stopRenderLoop() {
+        guard arTask != nil else { return }
         print("🛑 Stopping render loop")
         shouldStopRendering = true
         arTask?.cancel()
