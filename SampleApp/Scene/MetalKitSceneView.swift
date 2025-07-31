@@ -40,6 +40,8 @@ struct MetalKitSceneView: ViewRepresentable {
         let renderer = MetalKitSceneRenderer(metalKitView)
         coordinator.renderer = renderer
         metalKitView.delegate = renderer
+        // this makes wedding-venue manageable, but still needs work...
+//        metalKitView.preferredFramesPerSecond = 30
 
         Task {
             do {
