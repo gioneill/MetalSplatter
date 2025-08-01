@@ -5,14 +5,15 @@ import OSLog
 import simd
 import Spatial
 import QuartzCore
+import Observation
 
-@MainActor
-class ParticipantStateTracker: ObservableObject {
+@Observable
+class ParticipantStateTracker {
     private let logger = Logger(subsystem: "com.metalsplatter", category: "ParticipantStateTracker")
     
-    @Published var participantStates: [String: EnhancedParticipantState] = [:]
-    @Published var spatialParticipants: Set<String> = []
-    @Published var contentAnchorPoints: [String: Pose3D] = [:]
+    var participantStates: [String: EnhancedParticipantState] = [:]
+    var spatialParticipants: Set<String> = []
+    var contentAnchorPoints: [String: Pose3D] = [:]
     
     private var sessionManager: SharePlaySessionManager?
     private var updateTask: Task<Void, Never>?
@@ -57,7 +58,7 @@ class ParticipantStateTracker: ObservableObject {
     }
     
     private func startStateTracking() {
-        guard let sessionManager = sessionManager else {
+        guard sessionManager != nil else {
             logger.error("Cannot start state tracking - no session manager")
             return
         }
@@ -79,7 +80,7 @@ class ParticipantStateTracker: ObservableObject {
         let remoteParticipants = sessionManager.remoteParticipants
         
         var newStates: [String: EnhancedParticipantState] = [:]
-        var newSpatialParticipants: Set<String> = []
+        let newSpatialParticipants: Set<String> = []
         
         // Process all participants (both nearby and remote)
         let allParticipants = nearbyParticipants.union(remoteParticipants)

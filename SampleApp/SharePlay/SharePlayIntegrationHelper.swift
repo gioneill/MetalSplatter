@@ -2,13 +2,14 @@ import Foundation
 import SwiftUI
 import GroupActivities
 import OSLog
+import Observation
 
-@MainActor
-class SharePlayIntegrationHelper: ObservableObject {
+@Observable
+class SharePlayIntegrationHelper {
     private let logger = Logger(subsystem: "com.metalsplatter", category: "SharePlayIntegration")
     
-    @Published var isInitialized = false
-    @Published var performanceMetrics = SharePlayPerformanceMetrics()
+    var isInitialized = false
+    var performanceMetrics = SharePlayPerformanceMetrics()
     
     let sessionManager = SharePlaySessionManager()
     let cameraSync = SharePlayCameraSync()
@@ -18,12 +19,12 @@ class SharePlayIntegrationHelper: ObservableObject {
     
     private var performanceTimer: Timer?
     
-    init() {
+    @MainActor init() {
         print("[SHAREPLAY] 🎆 SharePlayIntegrationHelper initializing...")
         setupIntegration()
     }
     
-    private func setupIntegration() {
+    @MainActor private func setupIntegration() {
         print("[SHAREPLAY] 🔧 Setting up SharePlay integration components...")
         
         // Configure all components
@@ -49,7 +50,7 @@ class SharePlayIntegrationHelper: ObservableObject {
         logger.info("SharePlay integration initialized successfully")
     }
     
-    func configureForRenderer(_ renderer: Any) {
+    @MainActor func configureForRenderer(_ renderer: Any) {
         print("[SHAREPLAY] 🎬 Configuring integration for renderer: \(type(of: renderer))")
         
         // Configure integration specific to the renderer type

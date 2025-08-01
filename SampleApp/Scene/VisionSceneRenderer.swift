@@ -133,7 +133,8 @@ func matrix4x4_scale(_ x: Float, _ y: Float, _ z: Float) -> simd_float4x4 {
 }
 
 @MainActor
-class VisionSceneRenderer: ObservableObject {
+@Observable
+class VisionSceneRenderer {
     private static let log =
         Logger(subsystem: Bundle.main.bundleIdentifier!,
                category: "VisionSceneRenderer")
@@ -147,7 +148,7 @@ class VisionSceneRenderer: ObservableObject {
 
     let inFlightSemaphore = DispatchSemaphore(value: Constants.maxSimultaneousRenders)
 
-    @Published var camera = Camera()
+    var camera = Camera()
 
     let arSession: ARKitSession
     let worldTracking: WorldTrackingProvider
@@ -1327,6 +1328,7 @@ class VisionSceneRenderer: ObservableObject {
         nearbyParticipantHandler = handler
     }
     
+    @MainActor
     deinit {
         print("🗑️ VisionSceneRenderer deinit - stopping render loop")
         shouldStopRendering = true
@@ -1343,4 +1345,3 @@ class VisionSceneRenderer: ObservableObject {
 }
 
 #endif // os(visionOS)
-

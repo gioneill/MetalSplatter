@@ -4,11 +4,13 @@ import Combine
 import GroupActivities
 import QuartzCore
 import SwiftUI
+import Observation
 
-class SharePlayCameraSync: ObservableObject {
-    @Published var remoteViewports: [String: RemoteViewportState] = [:]
-    @Published var syncedRotation: simd_quatf = simd_quatf(angle: 0, axis: [0,1,0])
-    @Published var syncedPosition: SIMD3<Float> = SIMD3<Float>(0, 0, -1.5)
+@Observable
+class SharePlayCameraSync {
+    var remoteViewports: [String: RemoteViewportState] = [:]
+    var syncedRotation: simd_quatf = simd_quatf(angle: 0, axis: [0,1,0])
+    var syncedPosition: SIMD3<Float> = SIMD3<Float>(0, 0, -1.5)
     
     private weak var sessionManager: SharePlaySessionManager?
     private var cancellables = Set<AnyCancellable>()
@@ -32,12 +34,10 @@ class SharePlayCameraSync: ObservableObject {
         self.sessionManager = sessionManager
         sessionManager.addDelegate(self)
         
-        sessionManager.$activeParticipants
-            .sink { [weak self] participants in
-                print("[SHAREPLAY] 👥 Camera sync updating remote participants: \(participants.count) total")
-                self?.updateRemoteParticipants(participants)
-            }
-            .store(in: &cancellables)
+        // Observe changes to activeParticipants using withObservationTracking
+        Task { [weak self] in
+            await self?.observeActiveParticipants()
+        }
         
         print("[SHAREPLAY] ✅ SharePlayCameraSync configuration complete")
     }
@@ -61,6 +61,24 @@ class SharePlayCameraSync: ObservableObject {
             }
         }
         print("[SHAREPLAY] ✅ Camera sync notifications setup complete")
+    }
+    
+    @MainActor
+    private func observeActiveParticipants() async {
+        while true {
+            withObservationTracking {
+                if let sessionManager = self.sessionManager {
+                    let participants = sessionManager.activeParticipants
+                    print("[SHAREPLAY] 👥 Camera sync updating remote participants: \(participants.count) total")
+                    self.updateRemoteParticipants(participants)
+                }
+            } onChange: {
+                Task { [weak self] in
+                    await self?.observeActiveParticipants()
+                }
+            }
+            break
+        }
     }
     
     private func updateRemoteParticipants(_ participants: Set<Participant>) {
@@ -225,4 +243,3 @@ extension SharePlayCameraSync: SharePlaySessionDelegate {
         print("[SHAREPLAY] 🎯 Received origin update from \(participant.id): pos=\(position), rot=\(rotation), scale=\(scale)")
     }
 }
-

@@ -5,14 +5,15 @@ import GroupActivities
 import simd
 import UniformTypeIdentifiers
 import UIKit
+import Observation
 
-@MainActor
-class SharePlayModelSync: ObservableObject {
+@Observable
+class SharePlayModelSync {
     private let logger = Logger(subsystem: "com.metalsplatter", category: "ModelSync")
     
-    @Published var currentModel: ModelIdentifier?
-    @Published var isLoadingSharedModel = false
-    @Published var sharedModelLoadingProgress: Double = 0.0
+    var currentModel: ModelIdentifier?
+    var isLoadingSharedModel = false
+    var sharedModelLoadingProgress: Double = 0.0
     
     private var sessionManager: SharePlaySessionManager?
     private var cancellables = Set<AnyCancellable>()

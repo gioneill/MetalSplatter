@@ -1,33 +1,20 @@
-#if os(visionOS)
 import CompositorServices
 import GroupActivities
-#endif
 import SwiftUI
 
 @main
 struct SampleApp: App {
-    @StateObject private var sharePlayIntegration = SharePlayIntegrationHelper()
+    @State private var sharePlayIntegration = SharePlayIntegrationHelper()
     @State private var currentRenderer: VisionSceneRenderer?
     
     var body: some Scene {
         WindowGroup("MetalSplatter Sample App", id: "main") {
-            ContentView()
-                .environmentObject(sharePlayIntegration.sessionManager)
+            ContentView(sharePlaySessionManager: sharePlayIntegration.sessionManager)
         }
-#if os(visionOS)
         .windowResizability(.contentSize)
         // visionOS 26: Scene association for SharePlay activities
         .handlesExternalEvents(matching: Set([SplatViewingActivity.activityIdentifier]))
-#endif
 
-#if os(macOS)
-        WindowGroup(for: ModelConfiguration.self) { configuration in
-            MetalKitSceneView(modelIdentifier: configuration.wrappedValue?.modelIdentifier)
-                .navigationTitle(configuration.wrappedValue?.modelIdentifier.description ?? "No Model")
-        }
-#endif // os(macOS)
-
-#if os(visionOS)
         ImmersiveSpace(for: ModelConfiguration.self) { configuration in
             CompositorLayer(configuration: ContentStageConfiguration()) { layerRenderer in
                 print("🎨 CompositorLayer created with configuration: \(String(describing: configuration.wrappedValue))")
@@ -58,17 +45,13 @@ struct SampleApp: App {
             }
         }
         .immersionStyle(selection: .constant(immersionStyle), in: immersionStyle)
-#endif // os(visionOS)
     }
 
-#if os(visionOS)
-    var immersionStyle: ImmersionStyle {
+var immersionStyle: ImmersionStyle {
         if #available(visionOS 2, *) {
             .mixed
         } else {
             .full
         }
     }
-#endif // os(visionOS)
 }
-

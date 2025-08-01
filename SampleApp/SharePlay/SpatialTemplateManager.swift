@@ -4,6 +4,7 @@ import GroupActivities
 import OSLog
 import simd
 import SwiftUI
+import Observation
 
 // visionOS 26: Enhanced participant positioning support
 struct ParticipantPositioning {
@@ -14,13 +15,13 @@ struct ParticipantPositioning {
     let isSpatial: Bool
 }
 
-@MainActor
-class SpatialTemplateManager: ObservableObject {
+@Observable
+class SpatialTemplateManager {
     private let logger = Logger(subsystem: "com.metalsplatter", category: "SpatialTemplate")
     
-    @Published var currentTemplate: (any SpatialTemplate)?
-    @Published var participantRoles: [String: String] = [:] // Role assignments by participant ID
-    @Published var participantPositions: [String: ParticipantPositioning] = [:] // visionOS 26: Enhanced positioning
+    var currentTemplate: (any SpatialTemplate)?
+    var participantRoles: [String: String] = [:] // Role assignments by participant ID
+    var participantPositions: [String: ParticipantPositioning] = [:] // visionOS 26: Enhanced positioning
     
     private weak var sessionManager: SharePlaySessionManager?
     

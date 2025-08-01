@@ -2,7 +2,7 @@ import SwiftUI
 import GroupActivities
 
 struct SharePlayTestingView: View {
-    @ObservedObject var integrationHelper: SharePlayIntegrationHelper
+    @Bindable var integrationHelper: SharePlayIntegrationHelper
     @State private var showingDebugInfo = false
     @State private var testMessage = ""
     
@@ -184,7 +184,7 @@ struct PerformanceMetricsView: View {
 }
 
 struct SharePlayDebugView: View {
-    @ObservedObject var integrationHelper: SharePlayIntegrationHelper
+    @Bindable var integrationHelper: SharePlayIntegrationHelper
     @Environment(\.dismiss) private var dismiss
     
     var sessionStateSection: some View {

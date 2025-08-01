@@ -7,32 +7,16 @@ struct ContentView: View {
     @State private var usePreprocessComputeShader = false
     @State private var isLoadingModel = false
     @State private var showOriginSavedMessage = false
-    @EnvironmentObject private var sharePlaySessionManager: SharePlaySessionManager
+    @Bindable private var sharePlaySessionManager: SharePlaySessionManager
 
-#if os(macOS)
-    @Environment(\.openWindow) private var openWindow
-    
-    init(immersiveSpaceIsShown: Bool = false) {
-        // No-op init for macOS
-    }
-#elseif os(iOS)
-    @State private var navigationPath = NavigationPath()
-    
-    init(immersiveSpaceIsShown: Bool = false) {
-        // No-op init for iOS
-    }
-
-    private func openWindow(value: ModelConfiguration) {
-        navigationPath.append(value)
-    }
-#elseif os(visionOS)
     @Environment(\.openImmersiveSpace) var openImmersiveSpace
     @Environment(\.dismissImmersiveSpace) var dismissImmersiveSpace
 
     @State var immersiveSpaceIsShown = false
     
-    init(immersiveSpaceIsShown: Bool = false) {
-        self._immersiveSpaceIsShown = State(initialValue: immersiveSpaceIsShown)
+    init(sharePlaySessionManager: SharePlaySessionManager, immersiveSpaceIsShown: Bool = false) {
+        self._sharePlaySessionManager = Bindable(wrappedValue: sharePlaySessionManager)
+        self._immersiveSpaceIsShown = State(wrappedValue: immersiveSpaceIsShown)
     }
 
     private func openWindow(value: ModelConfiguration) {
@@ -69,20 +53,9 @@ struct ContentView: View {
             }
         }
     }
-#endif
 
     var body: some View {
-#if os(macOS) || os(visionOS)
         mainView
-#elseif os(iOS)
-        NavigationStack(path: $navigationPath) {
-            mainView
-                .navigationDestination(for: ModelConfiguration.self) { configuration in
-                    MetalKitSceneView(modelIdentifier: configuration.modelIdentifier)
-                        .navigationTitle(configuration.modelIdentifier.description)
-                }
-        }
-#endif // os(iOS)
     }
 
     @ViewBuilder
@@ -91,8 +64,7 @@ struct ContentView: View {
             Text("MetalSplatter SampleApp")
                 .font(.title)
             
-#if os(visionOS)
-            if isLoadingModel {
+if isLoadingModel {
                 ProgressView("Loading model...")
                     .padding()
             }
@@ -103,8 +75,6 @@ struct ContentView: View {
                 preview: SharePreview("View Together")
             )
             .hidden() // Critical: must be hidden but present in view hierarchy
-#endif
-
             Button("Read Scene File") {
                 isPickingFile = true
             }
@@ -232,10 +202,10 @@ struct ContentView: View {
 
 #if os(visionOS) && DEBUG
 #Preview("Immersive Space Inactive") {
-    ContentView()
+    ContentView(sharePlaySessionManager: SharePlaySessionManager())
 }
 
 #Preview("Immersive Space Active") {
-    ContentView(immersiveSpaceIsShown: true)
+    ContentView(sharePlaySessionManager: SharePlaySessionManager(), immersiveSpaceIsShown: true)
 }
 #endif

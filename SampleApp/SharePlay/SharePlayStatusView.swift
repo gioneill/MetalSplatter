@@ -2,7 +2,7 @@ import SwiftUI
 import GroupActivities
 
 struct SharePlayStatusView: View {
-    @ObservedObject var sessionManager: SharePlaySessionManager
+    @Bindable var sessionManager: SharePlaySessionManager
     @State private var showParticipantsList = false
     
     private var activity: SplatViewingActivity {
@@ -54,7 +54,7 @@ struct SharePlayStatusView: View {
 }
 
 struct ParticipantsListView: View {
-    @ObservedObject var sessionManager: SharePlaySessionManager
+    @Bindable var sessionManager: SharePlaySessionManager
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

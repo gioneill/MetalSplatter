@@ -5,14 +5,15 @@ import GroupActivities
 import Combine
 import OSLog
 import SwiftUI
+import Observation
 
-@MainActor
-class SpatialContentManager: ObservableObject {
+@Observable
+class SpatialContentManager {
     private let logger = Logger(subsystem: "com.metalsplatter", category: "SpatialContent")
     
-    @Published var participantIndicators: [String: Entity] = [:]
-    @Published var sharedAnnotations: [String: AnnotationEntity] = [:]
-    @Published var participantPointers: [String: Entity] = [:]
+    var participantIndicators: [String: Entity] = [:]
+    var sharedAnnotations: [String: AnnotationEntity] = [:]
+    var participantPointers: [String: Entity] = [:]
     
     private var nearbyParticipantHandler: NearbyParticipantHandler?
     private var cancellables = Set<AnyCancellable>()
@@ -32,21 +33,15 @@ class SpatialContentManager: ObservableObject {
         
         // Observe participant state changes
         print("[SHAREPLAY] 👥 Setting up participant state observation...")
-        nearbyHandler.$participantStates
-            .sink { [weak self] states in
-                print("[SHAREPLAY] 🔄 Participant states changed: \(states.count) participants")
-                self?.updateParticipantIndicators(states)
-            }
-            .store(in: &cancellables)
+        Task { [weak self] in
+            await self?.observeParticipantStates()
+        }
         
         // Observe shared world anchors
         print("[SHAREPLAY] ⚓ Setting up shared world anchor observation...")
-        nearbyHandler.$sharedWorldAnchors
-            .sink { [weak self] anchors in
-                print("[SHAREPLAY] 🌍 Shared world anchors changed: \(anchors.count) anchors")
-                self?.updateWorldAnchoredContent(anchors)
-            }
-            .store(in: &cancellables)
+        Task { [weak self] in
+            await self?.observeSharedWorldAnchors()
+        }
         
         print("[SHAREPLAY] ✅ SpatialContentManager configuration complete")
     }
@@ -112,6 +107,42 @@ class SpatialContentManager: ObservableObject {
         print("[SHAREPLAY] ✅ Spatial content notifications setup complete")
     }
     
+    @MainActor
+    private func observeParticipantStates() async {
+        while true {
+            withObservationTracking {
+                if let nearbyHandler = self.nearbyParticipantHandler {
+                    let states = nearbyHandler.participantStates
+                    print("[SHAREPLAY] 🔄 Participant states changed: \(states.count) participants")
+                    self.updateParticipantIndicators(states)
+                }
+            } onChange: {
+                Task { [weak self] in
+                    await self?.observeParticipantStates()
+                }
+            }
+            break
+        }
+    }
+    
+    @MainActor
+    private func observeSharedWorldAnchors() async {
+        while true {
+            withObservationTracking {
+                if let nearbyHandler = self.nearbyParticipantHandler {
+                    let anchors = nearbyHandler.sharedWorldAnchors
+                    print("[SHAREPLAY] 🌍 Shared world anchors changed: \(anchors.count) anchors")
+                    self.updateWorldAnchoredContent(anchors)
+                }
+            } onChange: {
+                Task { [weak self] in
+                    await self?.observeSharedWorldAnchors()
+                }
+            }
+            break
+        }
+    }
+    
     private func updateParticipantIndicators(_ participantStates: [String: NearbyParticipantHandler.ParticipantSpatialState]) {
         guard let rootEntity = rootEntity else { 
             print("[SHAREPLAY] ⚠️ No root entity available for participant indicators")
@@ -126,7 +157,9 @@ class SpatialContentManager: ObservableObject {
         for participantID in participantIndicators.keys {
             if !currentParticipantIDs.contains(participantID) {
                 if let indicator = participantIndicators.removeValue(forKey: participantID) {
-                    rootEntity.removeChild(indicator)
+                    Task { @MainActor in
+                        rootEntity.removeChild(indicator)
+                    }
                     print("[SHAREPLAY] 🗟️ Removed indicator for departed participant: \(participantID)")
                     removedCount += 1
                 }
@@ -145,7 +178,9 @@ class SpatialContentManager: ObservableObject {
                 // Create new indicator
                 let indicator = createParticipantIndicator(for: state)
                 participantIndicators[participantID] = indicator
-                rootEntity.addChild(indicator)
+                Task { @MainActor in
+                    rootEntity.addChild(indicator)
+                }
                 print("[SHAREPLAY] ➕ Added indicator for new participant: \(participantID) (\(state.isNearby ? "nearby" : "remote"))")
                 addedCount += 1
             }
@@ -233,7 +268,7 @@ class SpatialContentManager: ObservableObject {
             if let currentPointer = participantPointers[participantID],
                currentPointer == pointer {
                 participantPointers.removeValue(forKey: participantID)
-                rootEntity.removeChild(pointer)
+                await rootEntity.removeChild(pointer)
                 print("[SHAREPLAY] ⏰ Auto-removed expired pointer for \(participantID)")
             }
         }
@@ -324,6 +359,7 @@ class SpatialContentManager: ObservableObject {
         // Handle specific anchor updates (added, moved, removed)
     }
     
+    @MainActor
     func placeSharedContent(at position: SIMD3<Float>, anchoredToWorld: Bool = false) async {
         guard let rootEntity = rootEntity else { 
             print("[SHAREPLAY] ⚠️ No root entity available for placing shared content")

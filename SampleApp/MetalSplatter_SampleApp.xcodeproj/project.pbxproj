@@ -19,9 +19,7 @@
 		61791DEA2B4154FB00302B57 /* MatrixMathUtil.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61791DDF2B4154FB00302B57 /* MatrixMathUtil.swift */; };
 		61791E002B415D3F00302B57 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61791DFF2B415D3F00302B57 /* MetalSplatter */; };
 		61791E022B415D3F00302B57 /* SampleBoxRenderer in Frameworks */ = {isa = PBXBuildFile; productRef = 61791E012B415D3F00302B57 /* SampleBoxRenderer */; };
-		61791E102B41688000302B57 /* MetalKitSceneRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61791E0E2B41685800302B57 /* MetalKitSceneRenderer.swift */; };
 		61791E132B416DD700302B57 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61791E112B416DCF00302B57 /* Constants.swift */; };
-		61791E162B42297B00302B57 /* MetalKitSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61791E142B42294700302B57 /* MetalKitSceneView.swift */; };
 		617E50C92B314C4800F99766 /* PLYIO in Frameworks */ = {isa = PBXBuildFile; productRef = 617E50C82B314C4800F99766 /* PLYIO */; };
 		617E50CB2B314C4800F99766 /* SplatIO in Frameworks */ = {isa = PBXBuildFile; productRef = 617E50CA2B314C4800F99766 /* SplatIO */; };
 		D7052D8C2E30A18700C31EEE /* SplatViewingActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D8A2E30A18700C31EEE /* SplatViewingActivity.swift */; };
@@ -50,9 +48,7 @@
 		61791DF62B41551F00302B57 /* SampleApp.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SampleApp.swift; sourceTree = "<group>"; };
 		61791DF72B41551F00302B57 /* ContentView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		61791E0C2B41683500302B57 /* VisionSceneRenderer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = VisionSceneRenderer.swift; sourceTree = "<group>"; };
-		61791E0E2B41685800302B57 /* MetalKitSceneRenderer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MetalKitSceneRenderer.swift; sourceTree = "<group>"; };
 		61791E112B416DCF00302B57 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
-		61791E142B42294700302B57 /* MetalKitSceneView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MetalKitSceneView.swift; sourceTree = "<group>"; };
 		617E50B02B314BE200F99766 /* MetalSplatter SampleApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MetalSplatter SampleApp.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7052D822E30A18700C31EEE /* NearbyParticipantHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyParticipantHandler.swift; sourceTree = "<group>"; };
 		D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePlayCameraSync.swift; sourceTree = "<group>"; };
@@ -102,8 +98,6 @@
 			children = (
 				610347D82B46861E00693CE3 /* ContentStageConfiguration.swift */,
 				61791DF72B41551F00302B57 /* ContentView.swift */,
-				61791E0E2B41685800302B57 /* MetalKitSceneRenderer.swift */,
-				61791E142B42294700302B57 /* MetalKitSceneView.swift */,
 				61791E0C2B41683500302B57 /* VisionSceneRenderer.swift */,
 			);
 			path = Scene;
@@ -273,12 +267,10 @@
 				D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */,
 				D7CA5D582E3D12A500CB82B1 /* SpatialTemplateManager.swift in Sources */,
 				D7052D952E30A18700C31EEE /* DocumentPicker.swift in Sources */,
-				61791E102B41688000302B57 /* MetalKitSceneRenderer.swift in Sources */,
 				61791DE02B4154FB00302B57 /* SplatRenderer+ModelRenderer.swift in Sources */,
 				61791DE82B4154FB00302B57 /* ModelRenderer.swift in Sources */,
 				61791DCF2B41544300302B57 /* Assets.xcassets in Sources */,
 				61791E132B416DD700302B57 /* Constants.swift in Sources */,
-				61791E162B42297B00302B57 /* MetalKitSceneView.swift in Sources */,
 				610347DC2B46875A00693CE3 /* ContentStageConfiguration.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

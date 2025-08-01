@@ -2,25 +2,25 @@ import Foundation
 import GroupActivities
 import ARKit
 import RealityKit
-import Combine
 import OSLog
 import QuartzCore
 import Spatial
 import MetalSplatter
 
 #if os(visionOS)
-@MainActor
-class NearbyParticipantHandler: ObservableObject {
+import Observation
+
+@Observable
+class NearbyParticipantHandler {
     private let logger = Logger(subsystem: "com.metalsplatter", category: "NearbyParticipants")
     
-    @Published var nearbyParticipants: Set<Participant> = []
-    @Published var remoteParticipants: Set<Participant> = []
-    @Published var participantStates: [String: ParticipantSpatialState] = [:]
-    @Published var sharedWorldAnchors: [String: WorldAnchor] = [:]
+    var nearbyParticipants: Set<Participant> = []
+    var remoteParticipants: Set<Participant> = []
+    var participantStates: [String: ParticipantSpatialState] = [:]
+    var sharedWorldAnchors: [String: WorldAnchor] = [:]
     
     private var sessionManager: SharePlaySessionManager?
     private var participantStateTracker: ParticipantStateTracker?
-    private var cancellables = Set<AnyCancellable>()
     
     // ARKit session for world anchor sharing
     private var arSession: ARKitSession?
@@ -52,27 +52,31 @@ class NearbyParticipantHandler: ObservableObject {
         // Configure participant state tracker
         participantStateTracker?.configure(with: sessionManager)
         
-        sessionManager.$nearbyParticipants
-            .sink { [weak self] participants in
-                print("[SHAREPLAY] 🏠 Nearby participants updated: \(participants.count) participants")
-                for participant in participants {
-                    print("[SHAREPLAY]   👤 Nearby: \(participant.id)")
-                }
-                self?.nearbyParticipants = participants
-                self?.updateParticipantStates()
+        // Initial sync using the current values
+        nearbyParticipants = sessionManager.nearbyParticipants
+        remoteParticipants = sessionManager.remoteParticipants
+        updateParticipantStates()
+
+        // Observe subsequent changes using the new Swift Observation framework
+        withObservationTracking({
+            _ = sessionManager.nearbyParticipants
+        }, onChange: { [weak self, weak sessionManager] in
+            guard let self, let sessionManager else { return }
+            Task { @MainActor in
+                self.nearbyParticipants = sessionManager.nearbyParticipants
+                self.updateParticipantStates()
             }
-            .store(in: &cancellables)
-        
-        sessionManager.$remoteParticipants
-            .sink { [weak self] participants in
-                print("[SHAREPLAY] 📹 Remote participants updated: \(participants.count) participants")
-                for participant in participants {
-                    print("[SHAREPLAY]   👤 Remote: \(participant.id)")
-                }
-                self?.remoteParticipants = participants
-                self?.updateParticipantStates()
+        })
+
+        withObservationTracking({
+            _ = sessionManager.remoteParticipants
+        }, onChange: { [weak self, weak sessionManager] in
+            guard let self, let sessionManager else { return }
+            Task { @MainActor in
+                self.remoteParticipants = sessionManager.remoteParticipants
+                self.updateParticipantStates()
             }
-            .store(in: &cancellables)
+        })
         
         // Listen for participant state updates
         NotificationCenter.default.addObserver(
@@ -471,8 +475,6 @@ class NearbyParticipantHandler: ObservableObject {
     deinit {
         print("[SHAREPLAY] 🗑️ NearbyParticipantHandler deinit - cleaning up")
         
-        // Cancel all Combine subscriptions
-        cancellables.removeAll()
         
         // Remove notification observers
         NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ParticipantStatesUpdated"), object: nil)

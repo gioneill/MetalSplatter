@@ -2,30 +2,100 @@
 
 This guide provides a comprehensive approach to testing the SharePlay features in MetalSplatter, with a focus on ensuring a robust and intuitive shared experience. **Updated for visionOS 26 with nearby participants support and enhanced spatial features.**
 
-## Core Concepts
-
-- **Model Synchronization**: The SharePlay session identifies 3D models by their **filename**, not their full file path. For a shared experience to work, all participants must have a local copy of the `.ply` or `.splat` file with the **exact same filename** (e.g., `garden.ply`). The host does not transmit the model file itself.
-- **Shared Spatial Experience**: The session is designed for all participants to explore the 3D model together. Camera movements (position and rotation) are synchronized across all devices in real-time, allowing you to "walk through" the space together.
-- **Host & Participant**: The user who initiates the SharePlay session is the "Host." Others who join are "Participants." Some actions, like changing the model, can only be done by the Host.
-
-## visionOS 26 New Features
-
-- **Nearby Participants Support**: SharePlay now supports inviting nearby people wearing Apple Vision Pro to join group activities directly, without requiring FaceTime calls.
-- **Mixed Participant Types**: Sessions can include both nearby participants (appear via passthrough) and remote participants (appear as spatial Personas).
-- **Enhanced Spatial Positioning**: The system distinguishes between actual participant poses and assigned seat poses, with different handling for nearby vs remote participants.
-- **Share Window Menu**: Activities are discoverable through the new Share Window menu in visionOS 26.
-- **No FaceTime Requirement**: Activities can be started without requiring an active FaceTime call (presents Share Window menu instead).
-
-## Prerequisites
-
-- Two or more Vision Pro devices (or a mix of real devices and simulators).
-- All devices signed into the same Apple ID for FaceTime.
-- The MetalSplatter application installed on all devices.
-- At least one `.ply` or `.splat` file with the **same filename** saved on all testing devices. To test model switching, have multiple files with the same filenames across devices.
+This document is structured in two parts:
+1.  **Design and Logic Flow**: A code-review-style overview of the classes, design patterns, and data flow for the new SharePlay architecture.
+2.  **Manual Test Plan**: Detailed, step-by-step test cases for verifying all aspects of the implementation.
 
 ---
 
-## Test Plan
+## 1. Design and Logic Flow (visionOS 26 Architecture)
+
+This section details the architecture of the enhanced SharePlay feature.
+
+### Key Classes and Their Responsibilities
+
+The new architecture introduces several classes to manage the complexity of spatial sessions with mixed-presence participants.
+
+-   **`SharePlaySessionManager`**:
+    -   **Role**: Remains the central hub for managing the `GroupSession`, but with significant updates for visionOS 26.
+    -   **Key Changes**:
+        -   **Activity Activation**: No longer checks `isEligibleForGroupSession`. It now calls `activity.activate()` directly, which has the new system behavior of presenting the **Share Window menu** if the user is not in an active FaceTime call. This is the entry point for inviting nearby participants.
+        -   **Participant-Type Distinction**: Now uses `participant.isNearbyWithLocalParticipant` to robustly distinguish between **nearby** (visible via passthrough) and **remote** (visible as spatial Personas) participants.
+        -   **SystemCoordinator Monitoring**: Actively monitors `SystemCoordinator` for changes in `localParticipantStates` and `groupImmersionStyle`, allowing the app to react to system-level changes in the shared experience.
+
+-   **`ParticipantStateTracker` (New)**:
+    -   **Role**: A dedicated `@Observable` object to continuously track the detailed state of every participant in the session.
+    -   **Logic Flow**:
+        1.  Is configured with the active `SharePlaySessionManager`.
+        2.  Runs a background task that periodically polls the session to get the latest participant info.
+        3.  For each participant, it creates an `EnhancedParticipantState` struct, capturing their `isNearby`, `isSpatial`, `pose`, and `seatPose` status.
+        4.  When states change, it broadcasts a `ParticipantStatesUpdated` `NotificationCenter` message to decouple this tracking logic from other parts of the app.
+
+-   **`SpatialTemplateManager` (New)**:
+    -   **Role**: Manages the spatial arrangement of participants and content within the immersive space. It's the "director" of the shared scene.
+    -   **Logic Flow**:
+        -   Receives positioning information from `SharePlaySessionManager`'s `SystemCoordinator` monitoring.
+        -   Maintains a `ParticipantPositioning` struct for each user, which is crucial for the new positioning logic.
+        -   **Positioning Logic**: Implements the key visionOS 26 rule:
+            -   For **nearby participants**, it uses their `actualPose`, as they cannot be repositioned by the app. The shared experience adapts to them.
+            -   For **remote participants**, it prefers their `seatPose` from a spatial template, as their Persona can be placed programmatically.
+        -   Provides various `SpatialTemplate` structs (`DefaultViewingTemplate`, `ImmersiveTemplate`) that define seat arrangements.
+
+-   **`NearbyParticipantHandler`**:
+    -   **Role**: Has been refactored to act as a higher-level consumer of participant state information.
+    -   **Key Changes**:
+        -   It now owns and configures the `ParticipantStateTracker`.
+        -   It listens for the `ParticipantStatesUpdated` notification and uses the new `EnhancedParticipantState` data to update its own legacy state, ensuring backward compatibility with existing components.
+        -   Provides helper functions like `getOptimalContentPosition()` which uses the new spatial layout data to calculate the best place to put the 3D model so it's comfortably viewable by everyone.
+
+-   **`VisionSceneRenderer`**:
+    -   **Role**: The final consumer of all this data, responsible for rendering the scene.
+    -   **Logic Flow**:
+        -   Listens for notifications like `PositionContentForSpatialParticipant` and `ParticipantStatesUpdated`.
+        -   When a notification is received, it queries the `NearbyParticipantHandler` for the `getOptimalContentPosition()`.
+        -   It then gently adjusts the camera/model position to move towards this optimal point, ensuring the content remains centered and accessible for the group as people move.
+
+-   **`SplatViewingActivity` & `ContentView`**:
+    -   **Role**: The entry point for the activity.
+    -   **Key Changes**:
+        -   `SplatViewingActivity` now uses `GroupActivityTransferRepresentation` and a `.default` scene association behavior to correctly integrate with the visionOS 26 Share Window.
+        -   `ContentView` includes a `.hidden()` `ShareLink`. This is a critical piece of the new API: the `ShareLink` must be in the view hierarchy for the system to detect that the app is sharable and show it in the Share Window menu.
+
+### Data Flow Summary
+
+1.  **Initiation**: User taps the share button, which is linked to the hidden `ShareLink` in `ContentView`.
+2.  **Activation**: `SharePlaySessionManager.startActivity()` is called. `activity.activate()` presents the system **Share Window**, allowing the user to invite nearby or remote participants.
+3.  **State Tracking**: Once the session starts, `ParticipantStateTracker` begins polling for participant states.
+4.  **Notification**: `ParticipantStateTracker` detects a change and posts a `ParticipantStatesUpdated` notification with detailed `EnhancedParticipantState` data.
+5.  **State Consumption**: `NearbyParticipantHandler` receives the notification and updates its model.
+6.  **Position Calculation**: `SpatialTemplateManager` uses the new state to determine the correct positioning logic (actual pose vs. seat pose). `NearbyParticipantHandler` queries it to find the optimal content position for the group.
+7.  **Scene Adjustment**: `VisionSceneRenderer` is notified of the update, gets the optimal position from `NearbyParticipantHandler`, and adjusts the camera transform accordingly.
+
+---
+
+## 2. Manual Test Plan
+
+### Core Concepts
+
+-   **Model Synchronization**: The SharePlay session identifies 3D models by their **filename**. All participants must have a local copy of the file with the **exact same filename**.
+-   **Shared Spatial Experience**: Camera movements are synchronized across all devices in real-time.
+-   **Host & Participant**: The user who initiates the session is the "Host."
+
+### visionOS 26 New Features
+
+-   **Nearby Participants Support**: Invite people in the same room directly via the Share Window, no FaceTime call required.
+-   **Mixed Participant Types**: Sessions can include nearby participants (appear via passthrough) and remote participants (appear as spatial Personas).
+-   **Enhanced Spatial Positioning**: The system distinguishes between a participant's actual physical pose and an assigned seat pose.
+-   **Share Window Menu**: Activities are discoverable through the new Share Window menu.
+
+### Prerequisites
+
+-   Two or more Vision Pro devices (or a mix of real devices and simulators).
+-   For remote testing, all devices signed into the same Apple ID for FaceTime.
+-   The MetalSplatter application installed on all devices.
+-   At least one `.ply` or `.splat` file with the **same filename** saved on all testing devices.
+
+---
 
 ### Test Case 1: Session Initiation and Model Sync
 

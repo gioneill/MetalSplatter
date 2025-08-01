@@ -1,4 +1,3 @@
-
 import Foundation
 import GroupActivities
 import Combine
@@ -8,7 +7,9 @@ import QuartzCore
 #if os(visionOS)
 import Spatial
 import SwiftUI
+#endif
 
+import Observation
 
 @MainActor
 protocol SharePlaySessionDelegate: AnyObject {
@@ -22,15 +23,15 @@ protocol SharePlaySessionDelegate: AnyObject {
     func didReceiveOriginUpdate(position: SIMD3<Float>, rotation: simd_quatf, scale: Float, from sender: Participant) async
 }
 
-@MainActor
-class SharePlaySessionManager: ObservableObject {
+@Observable
+class SharePlaySessionManager {
     private let logger = Logger(subsystem: "com.metalsplatter", category: "SharePlay")
     
-    @Published var isSharePlayActive = false
-    @Published var activeParticipants: Set<Participant> = []
-    @Published var nearbyParticipants: Set<Participant> = []
-    @Published var remoteParticipants: Set<Participant> = []
-    @Published var sessionState: GroupSession<SplatViewingActivity>.State = .waiting
+    var isSharePlayActive = false
+    var activeParticipants: Set<Participant> = []
+    var nearbyParticipants: Set<Participant> = []
+    var remoteParticipants: Set<Participant> = []
+    var sessionState: GroupSession<SplatViewingActivity>.State = .waiting
     
     private var groupSession: GroupSession<SplatViewingActivity>?
     private var messenger: GroupSessionMessenger?
@@ -547,4 +548,3 @@ class SharePlaySessionManager: ObservableObject {
     }
 #endif
 }
-#endif
