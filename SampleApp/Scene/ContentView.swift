@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var usePreprocessComputeShader = false
     @State private var isLoadingModel = false
     @State private var showOriginSavedMessage = false
+    @EnvironmentObject private var sharePlaySessionManager: SharePlaySessionManager
 
 #if os(macOS)
     @Environment(\.openWindow) private var openWindow
@@ -43,6 +44,15 @@ struct ContentView: View {
             case .opened:
                 print("✅ Immersive space opened successfully")
                 immersiveSpaceIsShown = true
+                
+                // Notify SharePlay about immersive scene
+                if sharePlaySessionManager.isSharePlayActive {
+                    sharePlaySessionManager.sendImmersiveSceneUpdate(
+                        isActive: true,
+                        modelIdentifier: value.modelIdentifier
+                    )
+                }
+                
                 // Wait a bit for the model to load
                 try? await Task.sleep(for: .seconds(3))
                 isLoadingModel = false
@@ -134,6 +144,14 @@ struct ContentView: View {
                         await dismissImmersiveSpace()
                         immersiveSpaceIsShown = false
                         isLoadingModel = false
+                        
+                        // Notify SharePlay about exiting immersive scene
+                        if sharePlaySessionManager.isSharePlayActive {
+                            sharePlaySessionManager.sendImmersiveSceneUpdate(
+                                isActive: false,
+                                modelIdentifier: nil
+                            )
+                        }
                     }
                 }
                 .disabled(isLoadingModel)
@@ -143,6 +161,14 @@ struct ContentView: View {
                         name: NSNotification.Name("SetNewOrigin"),
                         object: nil
                     )
+                    
+                    // If SharePlay is active, sync the origin change
+                    if sharePlaySessionManager.isSharePlayActive {
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("SharePlaySyncOrigin"),
+                            object: nil
+                        )
+                    }
                 }
                 .disabled(isLoadingModel)
             }
@@ -176,6 +202,21 @@ struct ContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     showOriginSavedMessage = false
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("EnterImmersiveSpaceRequested"))) { notification in
+            if let modelIdentifier = notification.userInfo?["modelIdentifier"] as? ModelIdentifier,
+               !immersiveSpaceIsShown {
+                let config = ModelConfiguration(modelIdentifier: modelIdentifier, usePreprocessComputeShader: usePreprocessComputeShader)
+                openWindow(value: config)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ExitImmersiveSpaceRequested"))) { _ in
+            if immersiveSpaceIsShown {
+                Task {
+                    await dismissImmersiveSpace()
+                    immersiveSpaceIsShown = false
                 }
             }
         }

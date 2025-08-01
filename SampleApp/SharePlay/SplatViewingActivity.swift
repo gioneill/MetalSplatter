@@ -37,6 +37,8 @@ enum SyncMessage: Codable {
     case viewingStateUpdate(ViewingState)
     case participantPointer(position: SIMD3<Float>, participantID: String)
     case annotation(AnnotationMessage)
+    case immersiveSceneUpdate(isActive: Bool, modelIdentifier: ModelIdentifier?)
+    case originUpdate(position: SIMD3<Float>, rotation: simd_quatf, scale: Float)
     
     struct ViewingState: Codable {
         let isPlaying: Bool

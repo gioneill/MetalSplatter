@@ -110,6 +110,57 @@ This guide provides a comprehensive approach to testing the SharePlay features i
 3.  **Expected Results**:
     -   ✅ When the device reconnects, its camera view should quickly sync to the current state of the shared session. There should be no lingering "desync."
 
+### Test Case 7: Immersive Scene Synchronization
+
+**Objective**: Verify that immersive scene state is synchronized across all participants with proper file validation.
+
+1. **Pre-Test Setup**:
+   - Ensure `garden.splat` exists on all devices.
+   - Ensure `cafe.splat` exists on all devices.
+   - Ensure `missing.splat` exists **only on the Host device**.
+
+2. **Steps**:
+   1. **Host**: Start a SharePlay session while in the main window view.
+   2. **Participants**: Join the session.
+   3. **Host**: Load `garden.splat` and enter immersive space.
+   4. **All**: Observe the transition.
+   5. **Host**: Exit immersive space using "Dismiss Immersive Space" button.
+   6. **All**: Observe the transition back to window view.
+   7. **Host**: Load `missing.splat` and attempt to enter immersive space.
+   8. **Participants**: Observe the file picker behavior.
+
+3. **Expected Results**:
+   - ✅ When Host enters immersive space, Participants receive a file picker prompt immediately.
+   - ✅ File picker validates that participants select the matching filename.
+   - ✅ If wrong file is selected, a helpful alert appears: "Wrong File - Please pick the same file the host chose: `filename.splat`"
+   - ✅ File picker re-shows after wrong file selection.
+   - ✅ Once correct file is selected, all participants enter immersive space together automatically.
+   - ✅ When Host exits immersive space, all participants exit together automatically.
+   - ✅ Camera synchronization continues to work in both window and immersive modes.
+   - ✅ For missing files, participants see clear error messaging.
+   - ✅ Participants can cancel file picker to choose not to join immersive experience.
+
+### Test Case 8: Origin Synchronization
+
+**Objective**: Verify that origin changes are synchronized across all participants.
+
+1. **Steps**:
+   1. Start a session with `model_A.ply` loaded on all devices.
+   2. **Host**: Move the camera to a specific non-default position.
+   3. **Host**: Press "Set new origin" button.
+   4. **All**: Observe the "New origin saved!" message appears.
+   5. **Participant A**: Move the camera to a different position.
+   6. **Host**: Load a different model `model_B.ply`.
+   7. **All**: Verify all participants see the same model with Host's saved origin.
+   8. **Host**: Return to `model_A.ply`.
+   9. **All**: Verify the camera returns to the origin set in step 3.
+
+3. **Expected Results**:
+   - ✅ When Host sets new origin, all participants' camera positions update immediately to match.
+   - ✅ All participants see the "New origin saved!" confirmation message.
+   - ✅ The new origin is saved and persists when switching models and returning.
+   - ✅ Origin synchronization works in both window and immersive viewing modes.
+
 ---
 
 ## Summary of Key Verification Points
@@ -118,3 +169,6 @@ This guide provides a comprehensive approach to testing the SharePlay features i
 - **No File Transfer**: Understand that participants must have local copies of the files.
 - **Truly Shared Space**: Verify that the camera is fully synchronized, enabling a collaborative exploration experience.
 - **Graceful Failures**: Ensure the app handles missing models and other errors without crashing.
+- **Immersive Scene Sync**: Host can transition all participants between window and immersive modes.
+- **File Validation**: Recipients must pick the exact same file to join immersive experiences.
+- **Origin Synchronization**: Origin changes by any participant are immediately reflected for all participants.

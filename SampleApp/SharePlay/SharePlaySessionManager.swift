@@ -214,6 +214,27 @@ class SharePlaySessionManager: ObservableObject {
         case .annotation(let annotation):
             print("[SHAREPLAY] 💬 Handling annotation from \(sender.id): \(annotation.text)")
             await notify { await $0.didReceiveAnnotation(annotation, from: sender) }
+            
+        case .immersiveSceneUpdate(let isActive, let modelIdentifier):
+            print("[SHAREPLAY] 🌐 Handling immersive scene update from \(sender.id): isActive=\(isActive)")
+            await notify { 
+                await $0.didReceiveImmersiveSceneUpdate(
+                    isActive: isActive, 
+                    modelIdentifier: modelIdentifier,
+                    from: sender
+                )
+            }
+            
+        case .originUpdate(let position, let rotation, let scale):
+            print("[SHAREPLAY] 🎯 Handling origin update from \(sender.id): pos=\(position), rot=\(rotation), scale=\(scale)")
+            await notify {
+                await $0.didReceiveOriginUpdate(
+                    position: position,
+                    rotation: rotation,
+                    scale: scale,
+                    from: sender
+                )
+            }
         }
         
         print("[SHAREPLAY] ✅ Message processing complete for participant \(sender.id)")
@@ -341,6 +362,50 @@ class SharePlaySessionManager: ObservableObject {
         }
     }
     
+    func sendImmersiveSceneUpdate(isActive: Bool, modelIdentifier: ModelIdentifier?) {
+        guard let messenger = messenger else {
+            print("[SHAREPLAY] ❌ No messenger available to send immersive scene update")
+            return
+        }
+        
+        print("[SHAREPLAY] 📤 Sending immersive scene update: isActive=\(isActive), model=\(modelIdentifier?.displayName ?? "none")")
+        
+        Task {
+            do {
+                let message = SyncMessage.immersiveSceneUpdate(isActive: isActive, modelIdentifier: modelIdentifier)
+                let data = try JSONEncoder().encode(message)
+                try await messenger.send(data)
+                print("[SHAREPLAY] ✅ Immersive scene update sent successfully")
+                logger.debug("Sent immersive scene update")
+            } catch {
+                print("[SHAREPLAY] ❌ Failed to send immersive scene update: \(error)")
+                logger.error("Failed to send immersive scene update: \(error)")
+            }
+        }
+    }
+    
+    func sendOriginUpdate(position: SIMD3<Float>, rotation: simd_quatf, scale: Float) {
+        guard let messenger = messenger else {
+            print("[SHAREPLAY] ❌ No messenger available to send origin update")
+            return
+        }
+        
+        print("[SHAREPLAY] 📤 Sending origin update: pos=\(position), rot=\(rotation), scale=\(scale)")
+        
+        Task {
+            do {
+                let message = SyncMessage.originUpdate(position: position, rotation: rotation, scale: scale)
+                let data = try JSONEncoder().encode(message)
+                try await messenger.send(data)
+                print("[SHAREPLAY] ✅ Origin update sent successfully")
+                logger.info("Sent origin update")
+            } catch {
+                print("[SHAREPLAY] ❌ Failed to send origin update: \(error)")
+                logger.error("Failed to send origin update: \(error)")
+            }
+        }
+    }
+    
     func endSession() {
         print("[SHAREPLAY] 🛑 Ending SharePlay session...")
         logger.info("Ending SharePlay session")
@@ -367,4 +432,6 @@ protocol SharePlaySessionDelegate: AnyObject {
     func didReceiveViewingStateUpdate(_ state: SyncMessage.ViewingState, from participant: Participant) async
     func didReceiveParticipantPointer(position: SIMD3<Float>, participantID: String, from participant: Participant) async
     func didReceiveAnnotation(_ annotation: SyncMessage.AnnotationMessage, from participant: Participant) async
+    func didReceiveImmersiveSceneUpdate(isActive: Bool, modelIdentifier: ModelIdentifier?, from participant: Participant) async
+    func didReceiveOriginUpdate(position: SIMD3<Float>, rotation: simd_quatf, scale: Float, from participant: Participant) async
 }

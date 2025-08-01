@@ -33,6 +33,7 @@
 		D7052D922E30A18700C31EEE /* NearbyParticipantHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D822E30A18700C31EEE /* NearbyParticipantHandler.swift */; };
 		D7052D932E30A18700C31EEE /* SharePlayTestingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D882E30A18700C31EEE /* SharePlayTestingView.swift */; };
 		D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */; };
+		D7052D952E30A18700C31EEE /* DocumentPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D962E30A18700C31EEE /* DocumentPicker.swift */; };
 		D70D41C12E3939A7003020E4 /* ARUnderstanding in Frameworks */ = {isa = PBXBuildFile; productRef = D70D41C02E3939A7003020E4 /* ARUnderstanding */; };
 /* End PBXBuildFile section */
 
@@ -60,6 +61,7 @@
 		D7052D882E30A18700C31EEE /* SharePlayTestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePlayTestingView.swift; sourceTree = "<group>"; };
 		D7052D892E30A18700C31EEE /* SpatialContentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialContentManager.swift; sourceTree = "<group>"; };
 		D7052D8A2E30A18700C31EEE /* SplatViewingActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplatViewingActivity.swift; sourceTree = "<group>"; };
+		D7052D962E30A18700C31EEE /* DocumentPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPicker.swift; sourceTree = "<group>"; };
 		D70D41BE2E38882D003020E4 /* MetalSplatter SampleApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "MetalSplatter SampleApp.entitlements"; sourceTree = "<group>"; };
 		D70D41C22E3965AA003020E4 /* MetalSplatter-SampleApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "MetalSplatter-SampleApp-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -154,6 +156,7 @@
 		D7052D8B2E30A18700C31EEE /* SharePlay */ = {
 			isa = PBXGroup;
 			children = (
+				D7052D962E30A18700C31EEE /* DocumentPicker.swift */,
 				D7052D822E30A18700C31EEE /* NearbyParticipantHandler.swift */,
 				D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */,
 				D7052D842E30A18700C31EEE /* SharePlayIntegrationHelper.swift */,
@@ -261,6 +264,7 @@
 				D7052D922E30A18700C31EEE /* NearbyParticipantHandler.swift in Sources */,
 				D7052D932E30A18700C31EEE /* SharePlayTestingView.swift in Sources */,
 				D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */,
+				D7052D952E30A18700C31EEE /* DocumentPicker.swift in Sources */,
 				61791E102B41688000302B57 /* MetalKitSceneRenderer.swift in Sources */,
 				61791DE02B4154FB00302B57 /* SplatRenderer+ModelRenderer.swift in Sources */,
 				61791DE82B4154FB00302B57 /* ModelRenderer.swift in Sources */,
@@ -302,14 +306,15 @@
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=xr*]" = edu.gregoone.metalsplatterdemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "xros xrsimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
 		};
@@ -341,14 +346,15 @@
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=xr*]" = edu.gregoone.metalsplatterdemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "xros xrsimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};

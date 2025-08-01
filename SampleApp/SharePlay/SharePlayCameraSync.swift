@@ -214,5 +214,15 @@ extension SharePlayCameraSync: SharePlaySessionDelegate {
             print("[SHAREPLAY] ✅ Annotation notification posted")
         }
     }
+    
+    func didReceiveImmersiveSceneUpdate(isActive: Bool, modelIdentifier: ModelIdentifier?, from participant: Participant) async {
+        // Handle immersive scene updates if needed for camera sync
+        print("[SHAREPLAY] 🌐 Received immersive scene update from \(participant.id): isActive=\(isActive)")
+    }
+    
+    func didReceiveOriginUpdate(position: SIMD3<Float>, rotation: simd_quatf, scale: Float, from participant: Participant) async {
+        // Handle origin updates for camera coordinate system
+        print("[SHAREPLAY] 🎯 Received origin update from \(participant.id): pos=\(position), rot=\(rotation), scale=\(scale)")
+    }
 }
 

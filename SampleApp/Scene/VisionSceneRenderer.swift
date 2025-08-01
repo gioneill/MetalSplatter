@@ -221,6 +221,33 @@ class VisionSceneRenderer: ObservableObject {
                 self?.setOriginForCurrentModel()
             }
         }
+        
+        // Listen for SharePlay origin sync requests
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("SharePlaySyncOrigin"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.syncOriginToSharePlay()
+            }
+        }
+        
+        // Listen for shared origin updates from other participants
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("ApplySharedOrigin"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                if let userInfo = notification.userInfo,
+                   let position = userInfo["position"] as? SIMD3<Float>,
+                   let rotation = userInfo["rotation"] as? simd_quatf,
+                   let scale = userInfo["scale"] as? Float {
+                    self?.applySharedOrigin(position: position, rotation: rotation, scale: scale)
+                }
+            }
+        }
     }
 
     func load(_ model: ModelIdentifier?, cameraPosition: SIMD3<Float>? = nil, usePreprocessComputeShader: Bool = false) async throws {
@@ -1087,6 +1114,43 @@ class VisionSceneRenderer: ObservableObject {
         PoseStore.save(pose: pose, for: url)
         
         // Post notification for UI feedback
+        NotificationCenter.default.post(
+            name: NSNotification.Name("OriginSaved"),
+            object: nil
+        )
+    }
+    
+    @MainActor
+    private func syncOriginToSharePlay() {
+        print("[SHAREPLAY] 📍 Syncing current origin to SharePlay participants")
+        
+        // Send current camera state to SharePlay
+        sharePlaySessionManager?.sendOriginUpdate(
+            position: camera.position,
+            rotation: camera.rotation,
+            scale: camera.scale
+        )
+    }
+    
+    @MainActor
+    private func applySharedOrigin(position: SIMD3<Float>, rotation: simd_quatf, scale: Float) {
+        print("[SHAREPLAY] 📍 Applying shared origin: pos=\(position), rot=\(rotation), scale=\(scale)")
+        
+        camera.position = position
+        camera.rotation = rotation
+        camera.scale = scale
+        
+        // Save this as the new origin for the current model
+        if let url = currentModelURL {
+            let pose = SavedCameraPose(
+                position: position,
+                rotation: rotation,
+                scale: scale
+            )
+            PoseStore.save(pose: pose, for: url)
+        }
+        
+        // Show confirmation message
         NotificationCenter.default.post(
             name: NSNotification.Name("OriginSaved"),
             object: nil

@@ -3,6 +3,8 @@ import Combine
 import OSLog
 import GroupActivities
 import simd
+import UniformTypeIdentifiers
+import UIKit
 
 @MainActor
 class SharePlayModelSync: ObservableObject {
@@ -145,6 +147,21 @@ class SharePlayModelSync: ObservableObject {
         print("[SHAREPLAY] 🗑️ SharePlayModelSync deinit - cleaning up notifications")
         NotificationCenter.default.removeObserver(self)
     }
+    
+    @MainActor
+    private func showSimpleAlert(title: String, message: String) async {
+        await MainActor.run {
+            guard let root = UIApplication.shared.connectedScenes
+                    .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController })
+                    .first else { return }
+            
+            let alert = UIAlertController(title: title,
+                                          message: message,
+                                          preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            root.present(alert, animated: true)
+        }
+    }
 }
 
 enum ModelAvailability {
@@ -162,24 +179,41 @@ extension SharePlayModelSync: SharePlaySessionDelegate {
         print("[SHAREPLAY] 📨 Received model selection from participant \(participant.id): \(modelIdentifier.displayName)")
         logger.info("Received model selection from participant \(participant.id): \(modelIdentifier.displayName)")
         
-        let availability = handleModelAvailabilityCheck(modelIdentifier)
+        // Already loaded? Nothing to do.
+        guard currentModel != modelIdentifier else { return }
         
-        switch availability {
-        case .available:
-            print("[SHAREPLAY] ✅ Model available, proceeding to load")
+        // Quick local check
+        if case .available = handleModelAvailabilityCheck(modelIdentifier) {
             await loadSharedModel(modelIdentifier, from: participant)
-        case .needsDownload(let url):
-            print("[SHAREPLAY] ⚠️ Model not available locally, needs download: \(url)")
-            logger.warning("Model not available locally, needs download: \(url)")
-            // In a real implementation, you might:
-            // 1. Show a dialog to the user
-            // 2. Attempt to download the model
-            // 3. Use iCloud sharing or other mechanisms
-            await showModelUnavailableAlert(modelIdentifier, reason: "Model file not found locally")
-        case .unavailable(let reason):
-            print("[SHAREPLAY] ❌ Model unavailable: \(reason)")
-            logger.error("Model unavailable: \(reason)")
-            await showModelUnavailableAlert(modelIdentifier, reason: reason)
+            return
+        }
+        
+        // Interactive picker loop for missing files
+        let expectedName = modelIdentifier.displayName
+        
+        while true {
+            let pickedURL: URL
+            do {
+                pickedURL = try await DocumentPicker.pickFile(allowedTypes: [.item])
+            } catch {
+                logger.warning("User cancelled picker → aborting model load")
+                return
+            }
+            
+            // Validate the filename matches
+            if pickedURL.lastPathComponent.compare(expectedName, options: [.caseInsensitive]) == .orderedSame {
+                // Success!
+                let newIdentifier = ModelIdentifier.gaussianSplat(pickedURL)
+                await loadSharedModel(newIdentifier, from: participant)
+                return
+            }
+            
+            // Not a match → show error and loop
+            logger.notice("Picked '\(pickedURL.lastPathComponent)' — need '\(expectedName)'")
+            await showSimpleAlert(
+                title: "Wrong File",
+                message: "Please pick the same file the host chose: \(expectedName)"
+            )
         }
     }
     
@@ -199,6 +233,93 @@ extension SharePlayModelSync: SharePlaySessionDelegate {
     
     func didReceiveAnnotation(_ annotation: SyncMessage.AnnotationMessage, from participant: Participant) async {
         // Annotation updates are handled elsewhere
+    }
+    
+    func didReceiveImmersiveSceneUpdate(isActive: Bool, modelIdentifier: ModelIdentifier?, from participant: Participant) async {
+        print("[SHAREPLAY] 🌐 Received immersive scene update: isActive=\(isActive)")
+        
+        if isActive, let modelIdentifier = modelIdentifier {
+            // Host entered immersive space - we need to join them
+            
+            // First ensure we have the model
+            if case .available = handleModelAvailabilityCheck(modelIdentifier) {
+                // We have it - load and enter immersive space
+                await loadSharedModel(modelIdentifier, from: participant)
+                await enterImmersiveSpace(with: modelIdentifier)
+            } else {
+                // Need to pick the file first
+                let expectedName = modelIdentifier.displayName
+                
+                while true {
+                    let pickedURL: URL
+                    do {
+                        pickedURL = try await DocumentPicker.pickFile(allowedTypes: [.item])
+                    } catch DocumentPicker.PickerError.cancelled {
+                        // User cancelled - they choose not to join immersive space
+                        logger.info("User cancelled joining immersive space")
+                        return
+                    } catch {
+                        // Other error - show it
+                        await showSimpleAlert(
+                            title: "Error",
+                            message: "Failed to pick file: \(error.localizedDescription)"
+                        )
+                        return
+                    }
+                    
+                    // Validate the filename matches
+                    if pickedURL.lastPathComponent.compare(expectedName, options: [.caseInsensitive]) == .orderedSame {
+                        // Success! Load model and enter immersive space
+                        let newIdentifier = ModelIdentifier.gaussianSplat(pickedURL)
+                        await loadSharedModel(newIdentifier, from: participant)
+                        await enterImmersiveSpace(with: newIdentifier)
+                        return
+                    }
+                    
+                    // Not a match → show error and loop
+                    await showSimpleAlert(
+                        title: "Wrong File",
+                        message: "Please pick the same file the host chose: \(expectedName)"
+                    )
+                }
+            }
+        } else {
+            // Host exited immersive space - we should too
+            await exitImmersiveSpace()
+        }
+    }
+    
+    func didReceiveOriginUpdate(position: SIMD3<Float>, rotation: simd_quatf, scale: Float, from participant: Participant) async {
+        print("[SHAREPLAY] 🎯 Received origin update from \(participant.id): pos=\(position), rot=\(rotation), scale=\(scale)")
+        logger.info("Received origin update from participant \(participant.id)")
+        
+        // Post notification for VisionSceneRenderer to handle
+        NotificationCenter.default.post(
+            name: NSNotification.Name("ApplySharedOrigin"),
+            object: nil,
+            userInfo: [
+                "position": position,
+                "rotation": rotation,
+                "scale": scale
+            ]
+        )
+    }
+    
+    private func enterImmersiveSpace(with modelIdentifier: ModelIdentifier) async {
+        // Post notification for ContentView to handle
+        NotificationCenter.default.post(
+            name: NSNotification.Name("EnterImmersiveSpaceRequested"),
+            object: nil,
+            userInfo: ["modelIdentifier": modelIdentifier]
+        )
+    }
+    
+    private func exitImmersiveSpace() async {
+        // Post notification for ContentView to handle
+        NotificationCenter.default.post(
+            name: NSNotification.Name("ExitImmersiveSpaceRequested"),
+            object: nil
+        )
     }
     
     private func showModelUnavailableAlert(_ modelIdentifier: ModelIdentifier, reason: String) async {
