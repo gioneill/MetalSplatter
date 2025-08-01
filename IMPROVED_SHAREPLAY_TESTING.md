@@ -1,12 +1,20 @@
-# Improved SharePlay Testing Guide
+# Improved SharePlay Testing Guide - visionOS 26 Enhanced
 
-This guide provides a comprehensive approach to testing the SharePlay features in MetalSplatter, with a focus on ensuring a robust and intuitive shared experience.
+This guide provides a comprehensive approach to testing the SharePlay features in MetalSplatter, with a focus on ensuring a robust and intuitive shared experience. **Updated for visionOS 26 with nearby participants support and enhanced spatial features.**
 
 ## Core Concepts
 
 - **Model Synchronization**: The SharePlay session identifies 3D models by their **filename**, not their full file path. For a shared experience to work, all participants must have a local copy of the `.ply` or `.splat` file with the **exact same filename** (e.g., `garden.ply`). The host does not transmit the model file itself.
 - **Shared Spatial Experience**: The session is designed for all participants to explore the 3D model together. Camera movements (position and rotation) are synchronized across all devices in real-time, allowing you to "walk through" the space together.
 - **Host & Participant**: The user who initiates the SharePlay session is the "Host." Others who join are "Participants." Some actions, like changing the model, can only be done by the Host.
+
+## visionOS 26 New Features
+
+- **Nearby Participants Support**: SharePlay now supports inviting nearby people wearing Apple Vision Pro to join group activities directly, without requiring FaceTime calls.
+- **Mixed Participant Types**: Sessions can include both nearby participants (appear via passthrough) and remote participants (appear as spatial Personas).
+- **Enhanced Spatial Positioning**: The system distinguishes between actual participant poses and assigned seat poses, with different handling for nearby vs remote participants.
+- **Share Window Menu**: Activities are discoverable through the new Share Window menu in visionOS 26.
+- **No FaceTime Requirement**: Activities can be started without requiring an active FaceTime call (presents Share Window menu instead).
 
 ## Prerequisites
 
@@ -161,10 +169,82 @@ This guide provides a comprehensive approach to testing the SharePlay features i
    - ✅ The new origin is saved and persists when switching models and returning.
    - ✅ Origin synchronization works in both window and immersive viewing modes.
 
+### Test Case 9: visionOS 26 Nearby Participants (NEW)
+
+**Objective**: Test the new nearby participants functionality introduced in visionOS 26.
+
+1. **Pre-Test Setup**:
+   - Two Vision Pro devices in the same physical room.
+   - Both devices have MetalSplatter installed.
+   - Both devices have `garden.splat` with identical filenames.
+
+2. **Steps**:
+   1. **Host**: Load `garden.splat` in MetalSplatter.
+   2. **Host**: Start SharePlay activity (no FaceTime call required in visionOS 26).
+   3. **Host**: Observe Share Window menu appears.
+   4. **Host**: Use Share Window menu to invite nearby participants.
+   5. **Nearby Participant**: Accept the nearby invitation.
+   6. **Host**: Move around physically while controlling the camera.
+   7. **Nearby Participant**: Move around physically.
+   8. **Both**: Test camera synchronization with physical movement.
+
+3. **Expected Results**:
+   - ✅ Share Window menu appears when starting activity without active FaceTime call.
+   - ✅ Nearby participant appears via passthrough (physical presence visible).
+   - ✅ System logs show "nearby=true" for the nearby participant.
+   - ✅ Content positioning adapts to nearby participant's actual physical location.
+   - ✅ Camera synchronization works with mixed physical/virtual positioning.
+
+### Test Case 10: visionOS 26 Mixed Participant Types (NEW)
+
+**Objective**: Test sessions with both nearby and remote participants simultaneously.
+
+1. **Pre-Test Setup**:
+   - Two Vision Pro devices in the same room (nearby participants).
+   - One Vision Pro device in a different location (remote participant).
+   - All devices have `model_A.ply` with identical filenames.
+
+2. **Steps**:
+   1. **Host**: Start SharePlay session and invite both nearby and remote participants.
+   2. **Remote Participant**: Join via FaceTime/spatial Persona.
+   3. **Nearby Participant**: Join via nearby invitation.
+   4. **All**: Observe participant representation differences.
+   5. **Host**: Enter immersive space.
+   6. **All**: Test positioning and spatial template application.
+   7. **Each participant**: Take turns moving the camera.
+
+3. **Expected Results**:
+   - ✅ Nearby participants appear via passthrough.
+   - ✅ Remote participants appear as spatial Personas.
+   - ✅ System logs distinguish participant types correctly.
+   - ✅ Spatial template positioning works for both participant types.
+   - ✅ Camera synchronization works across mixed participant types.
+
+### Test Case 11: visionOS 26 Enhanced Spatial Positioning (NEW)
+
+**Objective**: Verify the new pose vs seat positioning logic for different participant types.
+
+1. **Steps**:
+   1. Start a mixed session (nearby + remote participants).
+   2. **Host**: Enter immersive space to activate spatial templates.
+   3. **All**: Observe initial positioning.
+   4. **Nearby Participant**: Move to a different physical location.
+   5. **Remote Participant**: Stay in their assigned spatial Persona seat.
+   6. **Host**: Check console logs for positioning data.
+   7. **All**: Test content interaction from different positions.
+
+3. **Expected Results**:
+   - ✅ Console logs show "Using actual pose for nearby participant".
+   - ✅ Console logs show "Using seat pose for remote participant".
+   - ✅ Nearby participants' content positioning follows their actual physical location.
+   - ✅ Remote participants' content positioning uses their assigned seats.
+   - ✅ No positioning conflicts or jitter between participant types.
+
 ---
 
 ## Summary of Key Verification Points
 
+### Core SharePlay Features
 - **Filename is Key**: Confirm that model synchronization relies on matching filenames.
 - **No File Transfer**: Understand that participants must have local copies of the files.
 - **Truly Shared Space**: Verify that the camera is fully synchronized, enabling a collaborative exploration experience.
@@ -172,3 +252,22 @@ This guide provides a comprehensive approach to testing the SharePlay features i
 - **Immersive Scene Sync**: Host can transition all participants between window and immersive modes.
 - **File Validation**: Recipients must pick the exact same file to join immersive experiences.
 - **Origin Synchronization**: Origin changes by any participant are immediately reflected for all participants.
+
+### visionOS 26 Enhanced Features
+- **Nearby Participants**: Verify support for nearby Vision Pro users joining without FaceTime calls.
+- **Mixed Participant Types**: Test sessions with both nearby (passthrough) and remote (spatial Persona) participants.
+- **Share Window Menu**: Confirm activities are discoverable through the new Share Window menu.
+- **Enhanced Positioning**: Verify proper handling of actual poses vs assigned seats for different participant types.
+- **No FaceTime Requirement**: Test that activities can start without active FaceTime calls.
+- **Console Logging**: Monitor enhanced logging that distinguishes participant types and positioning logic.
+
+## Implementation Status
+
+✅ **Completed visionOS 26 Enhancements:**
+- Nearby participants support with `isNearbyWithLocalParticipant` detection
+- Enhanced SystemCoordinator monitoring with `remoteParticipantStates`
+- Advanced spatial positioning logic with pose vs seat distinction
+- Share Window menu integration with hidden ShareLink
+- Activity activation without `isEligibleForGroupSession` checks
+- Proper GroupActivity Transferable support
+- Scene association configuration for proper activity routing

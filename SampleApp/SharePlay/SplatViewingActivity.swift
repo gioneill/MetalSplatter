@@ -15,7 +15,10 @@ struct SplatViewingActivity: GroupActivity, Transferable {
         }
         metadata.previewImage = UIImage(named: "splat-preview")?.cgImage
         metadata.supportsContinuationOnTV = false
-        metadata.sceneAssociationBehavior = .content(modelIdentifier?.contentID ?? "content:none")
+        
+        // visionOS 26: Enhanced scene association for Share Window menu
+        metadata.sceneAssociationBehavior = .default
+        
         return metadata
     }
     
@@ -25,9 +28,15 @@ struct SplatViewingActivity: GroupActivity, Transferable {
         self.modelIdentifier = modelIdentifier
     }
     
-    // MARK: - Transferable conformance
+    // MARK: - visionOS 26 Transferable conformance
     static var transferRepresentation: some TransferRepresentation {
+        // Standard data representation
         CodableRepresentation(contentType: .data)
+        
+        // visionOS 26: GroupActivity transfer representation for Share Window menu
+        GroupActivityTransferRepresentation { activity in
+            activity
+        }
     }
 }
 

@@ -96,6 +96,13 @@ struct ContentView: View {
                 ProgressView("Loading model...")
                     .padding()
             }
+            
+            // visionOS 26: Hidden ShareLink for Share Window menu discovery
+            ShareLink(
+                item: SplatViewingActivity(modelIdentifier: nil),
+                preview: SharePreview("View Together")
+            )
+            .hidden() // Critical: must be hidden but present in view hierarchy
 #endif
 
             Button("Read Scene File") {

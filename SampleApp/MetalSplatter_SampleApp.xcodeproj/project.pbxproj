@@ -35,6 +35,8 @@
 		D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */; };
 		D7052D952E30A18700C31EEE /* DocumentPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7052D962E30A18700C31EEE /* DocumentPicker.swift */; };
 		D70D41C12E3939A7003020E4 /* ARUnderstanding in Frameworks */ = {isa = PBXBuildFile; productRef = D70D41C02E3939A7003020E4 /* ARUnderstanding */; };
+		D7CA5D562E3D129B00CB82B1 /* ParticipantStateTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7CA5D552E3D129B00CB82B1 /* ParticipantStateTracker.swift */; };
+		D7CA5D582E3D12A500CB82B1 /* SpatialTemplateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7CA5D572E3D12A500CB82B1 /* SpatialTemplateManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +66,8 @@
 		D7052D962E30A18700C31EEE /* DocumentPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPicker.swift; sourceTree = "<group>"; };
 		D70D41BE2E38882D003020E4 /* MetalSplatter SampleApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "MetalSplatter SampleApp.entitlements"; sourceTree = "<group>"; };
 		D70D41C22E3965AA003020E4 /* MetalSplatter-SampleApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "MetalSplatter-SampleApp-Info.plist"; sourceTree = "<group>"; };
+		D7CA5D552E3D129B00CB82B1 /* ParticipantStateTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticipantStateTracker.swift; sourceTree = "<group>"; };
+		D7CA5D572E3D12A500CB82B1 /* SpatialTemplateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialTemplateManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -156,6 +160,8 @@
 		D7052D8B2E30A18700C31EEE /* SharePlay */ = {
 			isa = PBXGroup;
 			children = (
+				D7CA5D572E3D12A500CB82B1 /* SpatialTemplateManager.swift */,
+				D7CA5D552E3D129B00CB82B1 /* ParticipantStateTracker.swift */,
 				D7052D962E30A18700C31EEE /* DocumentPicker.swift */,
 				D7052D822E30A18700C31EEE /* NearbyParticipantHandler.swift */,
 				D7052D832E30A18700C31EEE /* SharePlayCameraSync.swift */,
@@ -261,9 +267,11 @@
 				D7052D8F2E30A18700C31EEE /* SharePlayModelSync.swift in Sources */,
 				D7052D902E30A18700C31EEE /* SharePlayStatusView.swift in Sources */,
 				D7052D912E30A18700C31EEE /* SpatialContentManager.swift in Sources */,
+				D7CA5D562E3D129B00CB82B1 /* ParticipantStateTracker.swift in Sources */,
 				D7052D922E30A18700C31EEE /* NearbyParticipantHandler.swift in Sources */,
 				D7052D932E30A18700C31EEE /* SharePlayTestingView.swift in Sources */,
 				D7052D942E30A18700C31EEE /* SharePlayCameraSync.swift in Sources */,
+				D7CA5D582E3D12A500CB82B1 /* SpatialTemplateManager.swift in Sources */,
 				D7052D952E30A18700C31EEE /* DocumentPicker.swift in Sources */,
 				61791E102B41688000302B57 /* MetalKitSceneRenderer.swift in Sources */,
 				61791DE02B4154FB00302B57 /* SplatRenderer+ModelRenderer.swift in Sources */,

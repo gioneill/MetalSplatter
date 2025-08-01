@@ -13,12 +13,14 @@ Write idiomatic SwiftUI code following Apple's latest architectural recommendati
 
 ### 1. Embrace Native State Management
 
-Use SwiftUI's built-in property wrappers appropriately:
-- `@State` - Local, ephemeral view state
-- `@Binding` - Two-way data flow between views
-- `@Observable` - Shared state (iOS 17+)
-- `@ObservableObject` - Legacy shared state (pre-iOS 17)
-- `@Environment` - Dependency injection for app-wide concerns
+Use SwiftUI's built-in state and observation APIs:
+- `@State` — local, ephemeral view state
+- `@Binding` — two-way data flow between views
+- `@Observable` (iOS 17+) — annotate types for the new Observation framework shared state
+- `@ObservableObject` — legacy mechanism; avoid in new iOS 17+ code
+- `@Environment` — dependency injection for app-wide concerns
+
+> **Tip:** Prefer the built-in Observation framework (`@Observable` and `Observation` API) over Combine for most view-model state.
 
 ### 2. State Ownership Principles
 

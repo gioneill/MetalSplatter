@@ -5,7 +5,10 @@ import RealityKit
 import Combine
 import OSLog
 import QuartzCore
+import Spatial
+import MetalSplatter
 
+#if os(visionOS)
 @MainActor
 class NearbyParticipantHandler: ObservableObject {
     private let logger = Logger(subsystem: "com.metalsplatter", category: "NearbyParticipants")
@@ -16,6 +19,7 @@ class NearbyParticipantHandler: ObservableObject {
     @Published var sharedWorldAnchors: [String: WorldAnchor] = [:]
     
     private var sessionManager: SharePlaySessionManager?
+    private var participantStateTracker: ParticipantStateTracker?
     private var cancellables = Set<AnyCancellable>()
     
     // ARKit session for world anchor sharing
@@ -35,13 +39,18 @@ class NearbyParticipantHandler: ObservableObject {
     }
     
     init() {
+        logger.info("NearbyParticipantHandler initializing...")
         print("[SHAREPLAY] 👥 NearbyParticipantHandler initializing...")
+        participantStateTracker = ParticipantStateTracker()
         setupARKitSession()
     }
     
     func configure(with sessionManager: SharePlaySessionManager) {
         print("[SHAREPLAY] 🔧 Configuring NearbyParticipantHandler with session manager")
         self.sessionManager = sessionManager
+        
+        // Configure participant state tracker
+        participantStateTracker?.configure(with: sessionManager)
         
         sessionManager.$nearbyParticipants
             .sink { [weak self] participants in
@@ -65,6 +74,15 @@ class NearbyParticipantHandler: ObservableObject {
             }
             .store(in: &cancellables)
         
+        // Listen for participant state updates
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("ParticipantStatesUpdated"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleParticipantStateUpdate(notification)
+        }
+        
         print("[SHAREPLAY] ✅ NearbyParticipantHandler configuration complete")
     }
     
@@ -82,14 +100,32 @@ class NearbyParticipantHandler: ObservableObject {
                 return
             }
             
+            // Add provider support guards
+            guard WorldTrackingProvider.isSupported else {
+                print("[SHAREPLAY] ❌ WorldTrackingProvider not supported")
+                logger.error("WorldTrackingProvider not supported")
+                return
+            }
+            
             do {
                 print("[SHAREPLAY] 🚀 Starting ARKit session with world tracking...")
-                try await arSession.run([worldTrackingProvider])
-                print("[SHAREPLAY] ✅ ARKit session started successfully")
-                await observeWorldAnchors()
-            } catch {
-                print("[SHAREPLAY] ❌ Failed to start ARKit session: \(error)")
-                logger.error("Failed to start ARKit session: \(error)")
+                
+                await withTaskGroup(of: Void.self) { group in
+                    // Start ARKit session
+                    group.addTask {
+                        do {
+                            try await arSession.run([worldTrackingProvider])
+                            print("[SHAREPLAY] ✅ ARKit session started successfully")
+                        } catch {
+                            print("[SHAREPLAY] ❌ ARKit session failed: \(error)")
+                        }
+                    }
+                    
+                    // Start world anchor observation
+                    group.addTask {
+                        await self.observeWorldAnchors()
+                    }
+                }
             }
         }
         #else
@@ -185,16 +221,19 @@ class NearbyParticipantHandler: ObservableObject {
         for participant in allParticipants {
             let isNearby = nearbyParticipants.contains(participant)
             
-            // For this example, we'll use placeholder spatial data
-            // In a real implementation, you'd get this from the GroupSession's participant states
+            // Get actual spatial data from enhanced participant state if available
+            let enhancedState = participantStateTracker?.getParticipantState(for: participant.id.uuidString)
+            let position = enhancedState?.pose.position ?? Point3D.zero
+            let rotation = enhancedState?.pose.rotation ?? Rotation3D.identity
+            
             let state = ParticipantSpatialState(
                 participant: participant,
                 isNearby: isNearby,
-                position: SIMD3<Float>(0, 0, 0), // Would come from actual spatial data
-                rotation: simd_quatf(ix: 0, iy: 0, iz: 0, r: 1),
+                position: SIMD3<Float>(Float(position.x), Float(position.y), Float(position.z)),
+                rotation: simd_quatf(rotation),
                 lastUpdateTime: CACurrentMediaTime(),
-                seatPose: nil, // Would come from spatial template if available
-                participantPose: nil // Would come from participant tracking
+                seatPose: enhancedState?.seatPose.map { convertPose3DToFloat4x4($0) },
+                participantPose: enhancedState.map { convertPose3DToFloat4x4($0.pose) }
             )
             
             participantStates[participant.id.uuidString] = state
@@ -287,7 +326,161 @@ class NearbyParticipantHandler: ObservableObject {
             ]
         )
     }
+    
+    // MARK: - Enhanced Participant State Handling
+    
+    private func handleParticipantStateUpdate(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let enhancedStates = userInfo["participantStates"] as? [String: ParticipantStateTracker.EnhancedParticipantState],
+              let spatialParticipants = userInfo["spatialParticipants"] as? Set<String> else {
+            return
+        }
+        
+        print("[SHAREPLAY] 🔄 Handling participant state update: \(enhancedStates.count) participants, \(spatialParticipants.count) spatial")
+        
+        // Update our legacy participant states for backward compatibility
+        updateLegacyParticipantStates(from: enhancedStates)
+        
+        // Handle spatial participant positioning
+        handleSpatialParticipantPositioning(enhancedStates: enhancedStates, spatialParticipants: spatialParticipants)
+    }
+    
+    private func updateLegacyParticipantStates(from enhancedStates: [String: ParticipantStateTracker.EnhancedParticipantState]) {
+        var newLegacyStates: [String: ParticipantSpatialState] = [:]
+        
+        for (participantID, enhancedState) in enhancedStates {
+            let position = SIMD3<Float>(
+                Float(enhancedState.pose.position.x),
+                Float(enhancedState.pose.position.y),
+                Float(enhancedState.pose.position.z)
+            )
+            
+            // Convert Pose3D to simd_float4x4 for legacy compatibility
+            let pose4x4 = convertPose3DToFloat4x4(enhancedState.pose)
+            let seatPose4x4 = enhancedState.seatPose.map { convertPose3DToFloat4x4($0) }
+            
+            let legacyState = ParticipantSpatialState(
+                participant: enhancedState.participant,
+                isNearby: enhancedState.isNearby,
+                position: position,
+                rotation: simd_quatf(enhancedState.pose.rotation),
+                lastUpdateTime: enhancedState.lastUpdateTime,
+                seatPose: seatPose4x4,
+                participantPose: pose4x4
+            )
+            
+            newLegacyStates[participantID] = legacyState
+        }
+        
+        participantStates = newLegacyStates
+    }
+    
+    private func handleSpatialParticipantPositioning(enhancedStates: [String: ParticipantStateTracker.EnhancedParticipantState], spatialParticipants: Set<String>) {
+        // Position content relative to spatial participants
+        for participantID in spatialParticipants {
+            guard let state = enhancedStates[participantID] else { continue }
+            
+            print("[SHAREPLAY] ✨ Positioning content for spatial participant \(participantID)")
+            logger.info("Positioning content for spatial participant \(participantID) at pose: \(state.pose)")
+            
+            // Post notification for content positioning
+            NotificationCenter.default.post(
+                name: NSNotification.Name("PositionContentForSpatialParticipant"),
+                object: nil,
+                userInfo: [
+                    "participantID": participantID,
+                    "pose": state.pose,
+                    "isNearby": state.isNearby,
+                    "seatPose": state.seatPose as Any
+                ]
+            )
+        }
+    }
+    
+    // MARK: - Enhanced Public Interface
+    
+    func getEnhancedParticipantState(for participantID: String) -> ParticipantStateTracker.EnhancedParticipantState? {
+        return participantStateTracker?.getParticipantState(for: participantID)
+    }
+    
+    func getSpatialParticipants() -> [ParticipantStateTracker.EnhancedParticipantState] {
+        return participantStateTracker?.getSpatialParticipants() ?? []
+    }
+    
+    func getSharedContentLayout() -> SharedContentLayout? {
+        return participantStateTracker?.createSharedContentLayout()
+    }
+    
+    func positionContentRelativeToParticipant(_ participantID: String, offset: SIMD3<Float> = SIMD3<Float>(0, 0, 0)) -> simd_float4x4? {
+        return participantStateTracker?.positionContentRelativeToParticipant(participantID, offset: offset)
+    }
+    
+    func getOptimalContentPosition() -> simd_float4x4? {
+        guard let layout = getSharedContentLayout(),
+              let optimalPose = layout.getOptimalContentPosition() else {
+            return nil
+        }
+        
+        return convertPose3DToFloat4x4(optimalPose)
+    }
+    
+    func getParticipantVisualizationData() -> [(id: String, position: SIMD3<Float>, isNearby: Bool, isSpatial: Bool)] {
+        return participantStateTracker?.getParticipantVisualizationData() ?? []
+    }
+    
+    // MARK: - Utility Methods
+    
+    private func convertPose3DToFloat4x4(_ pose: Pose3D) -> simd_float4x4 {
+        let affineTransform = AffineTransform3D(pose: pose)
+        let matrix = affineTransform.matrix
+        return simd_float4x4(
+            SIMD4<Float>(Float(matrix.columns.0.x), Float(matrix.columns.0.y), Float(matrix.columns.0.z), 0),
+            SIMD4<Float>(Float(matrix.columns.1.x), Float(matrix.columns.1.y), Float(matrix.columns.1.z), 0),
+            SIMD4<Float>(Float(matrix.columns.2.x), Float(matrix.columns.2.y), Float(matrix.columns.2.z), 0),
+            SIMD4<Float>(Float(matrix.columns.3.x), Float(matrix.columns.3.y), Float(matrix.columns.3.z), 1)
+        )
+    }
+    
+    private func convertFloat4x4ToPose3D(_ matrix: simd_float4x4) -> Pose3D {
+        // Extract translation from the last column
+        let translation = Vector3D(
+            x: Double(matrix.columns.3.x),
+            y: Double(matrix.columns.3.y),
+            z: Double(matrix.columns.3.z)
+        )
+        
+        // Extract rotation matrix (upper 3x3)
+        let rotationMatrix = simd_float3x3(
+            simd_float3(matrix.columns.0.x, matrix.columns.0.y, matrix.columns.0.z),
+            simd_float3(matrix.columns.1.x, matrix.columns.1.y, matrix.columns.1.z),
+            simd_float3(matrix.columns.2.x, matrix.columns.2.y, matrix.columns.2.z)
+        )
+        
+        // Convert to quaternion (simplified - assumes no scaling)
+        let quat = simd_quatf(rotationMatrix)
+        let rotation = Rotation3D(quaternion: simd_quatd(
+            ix: Double(quat.imag.x),
+            iy: Double(quat.imag.y),
+            iz: Double(quat.imag.z),
+            r: Double(quat.real)
+        ))
+        
+        return Pose3D(position: Point3D(translation), rotation: rotation)
+    }
+    
+    deinit {
+        print("[SHAREPLAY] 🗑️ NearbyParticipantHandler deinit - cleaning up")
+        
+        // Cancel all Combine subscriptions
+        cancellables.removeAll()
+        
+        // Remove notification observers
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ParticipantStatesUpdated"), object: nil)
+        
+        logger.info("NearbyParticipantHandler deinitialized")
+    }
 }
+#endif // os(visionOS)
 
 enum ParticipantGesture: String, CaseIterable {
     case point = "point"

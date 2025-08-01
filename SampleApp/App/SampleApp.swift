@@ -1,5 +1,6 @@
 #if os(visionOS)
 import CompositorServices
+import GroupActivities
 #endif
 import SwiftUI
 
@@ -15,6 +16,8 @@ struct SampleApp: App {
         }
 #if os(visionOS)
         .windowResizability(.contentSize)
+        // visionOS 26: Scene association for SharePlay activities
+        .handlesExternalEvents(matching: Set([SplatViewingActivity.activityIdentifier]))
 #endif
 
 #if os(macOS)

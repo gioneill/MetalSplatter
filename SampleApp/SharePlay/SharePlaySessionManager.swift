@@ -1,9 +1,26 @@
+
 import Foundation
 import GroupActivities
 import Combine
 import OSLog
 import simd
 import QuartzCore
+#if os(visionOS)
+import Spatial
+import SwiftUI
+
+
+@MainActor
+protocol SharePlaySessionDelegate: AnyObject {
+    func participantsDidUpdate(nearby: Set<Participant>, remote: Set<Participant>) async
+    func didReceiveModelSelection(_ modelIdentifier: ModelIdentifier, from sender: Participant) async
+    func didReceiveCameraUpdate(position: SIMD3<Float>, rotation: simd_quatf, timestamp: TimeInterval, from sender: Participant) async
+    func didReceiveViewingStateUpdate(_ state: SyncMessage.ViewingState, from sender: Participant) async
+    func didReceiveParticipantPointer(position: SIMD3<Float>, participantID: String, from sender: Participant) async
+    func didReceiveAnnotation(_ annotation: SyncMessage.AnnotationMessage, from sender: Participant) async
+    func didReceiveImmersiveSceneUpdate(isActive: Bool, modelIdentifier: ModelIdentifier?, from sender: Participant) async
+    func didReceiveOriginUpdate(position: SIMD3<Float>, rotation: simd_quatf, scale: Float, from sender: Participant) async
+}
 
 @MainActor
 class SharePlaySessionManager: ObservableObject {
@@ -18,6 +35,10 @@ class SharePlaySessionManager: ObservableObject {
     private var groupSession: GroupSession<SplatViewingActivity>?
     private var messenger: GroupSessionMessenger?
     private var cancellables = Set<AnyCancellable>()
+    
+    #if os(visionOS)
+    private var spatialTemplateManager: SpatialTemplateManager?
+    #endif
     
     private var lastCameraUpdateTime: TimeInterval = 0
     private let cameraUpdateThrottle: TimeInterval = 1.0 / 30.0 // 30 FPS max
@@ -40,6 +61,10 @@ class SharePlaySessionManager: ObservableObject {
     
     init() {
         setupGroupSessionListener()
+        
+        #if os(visionOS)
+        spatialTemplateManager = SpatialTemplateManager()
+        #endif
     }
     
     private func setupGroupSessionListener() {
@@ -51,23 +76,24 @@ class SharePlaySessionManager: ObservableObject {
     }
     
     func startActivity(with modelIdentifier: ModelIdentifier?) async {
-        print("[SHAREPLAY] 🚀 Starting SharePlay activity...")
+        print("[SHAREPLAY] 🚀 Starting SharePlay activity (visionOS 26 mode)...")
         print("[SHAREPLAY] 📋 Model identifier: \(String(describing: modelIdentifier))")
         print("[SHAREPLAY] 📊 Current state - Active: \(isSharePlayActive), Participants: \(activeParticipants.count)")
-        logger.info("Starting SharePlay activity with model: \(modelIdentifier?.displayName ?? "none")")
+        logger.info("visionOS 26 - Starting SharePlay activity with model: \(modelIdentifier?.displayName ?? "none")")
         
         let activity = SplatViewingActivity(modelIdentifier: modelIdentifier)
         print("[SHAREPLAY] 🎯 Created SplatViewingActivity with identifier: \(SplatViewingActivity.activityIdentifier)")
         
         do {
-            print("[SHAREPLAY] 🔄 Attempting to activate SharePlay activity...")
+            print("[SHAREPLAY] 🔄 Activating SharePlay activity (visionOS 26 - no eligibility check)...")
+            // visionOS 26: Always call activate() - presents Share Window menu if no active call
             _ = try await activity.activate()
-            print("[SHAREPLAY] ✅ SharePlay activity activated successfully!")
-            logger.info("SharePlay activity activated successfully")
+            print("[SHAREPLAY] ✅ SharePlay activity activated successfully (Share Window menu shown if needed)!")
+            logger.info("visionOS 26 - SharePlay activity activated successfully")
         } catch {
             print("[SHAREPLAY] ❌ Failed to activate SharePlay activity: \(error)")
             print("[SHAREPLAY] 🔍 Error details: \(error.localizedDescription)")
-            logger.error("Failed to activate SharePlay activity: \(error)")
+            logger.error("visionOS 26 - Failed to activate SharePlay activity: \(error)")
         }
     }
     
@@ -120,6 +146,10 @@ class SharePlaySessionManager: ObservableObject {
             configuration.supportsGroupImmersiveSpace = true
             coordinator.configuration = configuration
             print("[SHAREPLAY] ✅ Group immersive space enabled")
+            
+            // Configure spatial template manager
+            spatialTemplateManager?.configure(with: self)
+            setupSystemCoordinatorMonitoring(coordinator)
         } else {
             print("[SHAREPLAY] ⚠️ No system coordinator available")
         }
@@ -127,9 +157,10 @@ class SharePlaySessionManager: ObservableObject {
     }
     
     private func updateParticipants(_ participants: Set<Participant>) async {
-        print("[SHAREPLAY] 🔄 Updating participants...")
+        print("[SHAREPLAY] 🔄 Updating participants (visionOS 26 mode)...")
         activeParticipants = participants
         
+        // visionOS 26: Enhanced nearby vs remote participant distinction
         nearbyParticipants = Set(participants.filter { participant in
             participant.isNearbyWithLocalParticipant &&
             participant.id != groupSession?.localParticipant.id
@@ -140,19 +171,19 @@ class SharePlaySessionManager: ObservableObject {
             participant.id != groupSession?.localParticipant.id
         })
         
-        print("[SHAREPLAY] 📊 Participant breakdown:")
+        print("[SHAREPLAY] 📊 Participant breakdown (visionOS 26):")
         print("[SHAREPLAY]   📱 Total: \(participants.count)")
-        print("[SHAREPLAY]   🏠 Nearby: \(self.nearbyParticipants.count)")
-        print("[SHAREPLAY]   📹 Remote: \(self.remoteParticipants.count)")
+        print("[SHAREPLAY]   🏠 Nearby (via passthrough): \(self.nearbyParticipants.count)")
+        print("[SHAREPLAY]   📹 Remote (spatial Personas): \(self.remoteParticipants.count)")
         
         for participant in nearbyParticipants {
-            print("[SHAREPLAY]   🏠 Nearby participant: \(participant.id)")
+            print("[SHAREPLAY]   🏠 Nearby participant: \(participant.id) (physical presence)")
         }
         for participant in remoteParticipants {
-            print("[SHAREPLAY]   📹 Remote participant: \(participant.id)")
+            print("[SHAREPLAY]   📹 Remote participant: \(participant.id) (spatial Persona)")
         }
         
-        logger.info("Updated participants - Total: \(participants.count), Nearby: \(self.nearbyParticipants.count), Remote: \(self.remoteParticipants.count)")
+        logger.info("visionOS 26 - Updated participants - Total: \(participants.count), Nearby: \(self.nearbyParticipants.count), Remote: \(self.remoteParticipants.count)")
         
         print("[SHAREPLAY] 📢 Notifying delegates of participant update...")
         await notify { await $0.participantsDidUpdate(nearby: self.nearbyParticipants, remote: self.remoteParticipants) }
@@ -422,16 +453,98 @@ class SharePlaySessionManager: ObservableObject {
         
         print("[SHAREPLAY] ✅ SharePlay session ended successfully")
     }
-}
+    
+    // MARK: - SystemCoordinator Support
+    
+#if os(visionOS)
+    private func setupSystemCoordinatorMonitoring(_ coordinator: SystemCoordinator) {
+        print("[SHAREPLAY] 🎯 Setting up SystemCoordinator monitoring for visionOS 26 features")
+        logger.info("Setting up SystemCoordinator monitoring with visionOS 26 enhancements")
+        
+        // Note: Remote participant state monitoring not available in current GroupActivities API
+        
+        // Enhanced local participant monitoring for visionOS 26
+        Task {
+            for await localState in coordinator.localParticipantStates {
+                print("[SHAREPLAY] 🧑 Local participant state changed: isSpatial=\(localState.isSpatial)")
+                await handleLocalParticipantStateChange(localState)
+            }
+        }
+        
+        // Monitor group immersion style changes
+        Task {
+            for await immersionStyle in coordinator.groupImmersionStyle {
+                if let style = immersionStyle {
+                    print("[SHAREPLAY] 🌐 Group immersion style changed: \(String(describing: style))")
+                    await handleGroupImmersionStyleChange(style)
+                } else {
+                    print("[SHAREPLAY] 🌐 Group immersion style cleared")
+                }
+            }
+        }
+    }
+    
+    private func handleRemoteParticipantStatesChange(_ states: [Participant: SystemCoordinator.ParticipantState]) async {
+        print("[SHAREPLAY] 🌐 Handling remote participant states change (visionOS 26)")
+        logger.info("Remote participant states changed: \(states.count) participants")
+        
+        for (participant, state) in states {
+            let isNearby = participant.isNearbyWithLocalParticipant
+            let isSpatial = state.isSpatial
+            
+            print("[SHAREPLAY] 👤 Participant \(participant.id): nearby=\(isNearby), spatial=\(isSpatial)")
+            
+            // visionOS 26: Handle positioning differences for nearby vs remote
+            if isNearby {
+                // Nearby participants can't be repositioned by system - use actual pose
+                await handleNearbyParticipantPositioning(participant, state)
+            } else {
+                // Remote spatial personas can be repositioned to seats
+                await handleRemoteParticipantPositioning(participant, state)
+            }
+            
+            // Update spatial template manager with positioning info
+            spatialTemplateManager?.updateParticipantPositioning(participant, state)
+        }
+    }
+    
+    private func handleNearbyParticipantPositioning(_ participant: Participant, _ state: SystemCoordinator.ParticipantState) async {
+        // visionOS 26: Use actual participant pose for nearby participants (they can't be moved)
+        print("[SHAREPLAY] 📍 Nearby participant \(participant.id) positioning - using actual pose")
+        logger.info("Nearby participant \(participant.id): isSpatial=\(state.isSpatial)")
+        
+        // Position content relative to their actual position, not seat
+        // Content should adapt to where nearby participants actually are
+    }
+    
+    private func handleRemoteParticipantPositioning(_ participant: Participant, _ state: SystemCoordinator.ParticipantState) async {
+        // visionOS 26: Remote participants can use either pose or seat.pose
+        print("[SHAREPLAY] 💺 Remote participant \(participant.id) positioning - can use seat arrangement")
+        logger.info("Remote participant \(participant.id): isSpatial=\(state.isSpatial)")
+        
+        // Can position content relative to seat.pose since spatial personas can be repositioned
+    }
 
-@MainActor
-protocol SharePlaySessionDelegate: AnyObject {
-    func participantsDidUpdate(nearby: Set<Participant>, remote: Set<Participant>) async
-    func didReceiveModelSelection(_ modelIdentifier: ModelIdentifier, from participant: Participant) async
-    func didReceiveCameraUpdate(position: SIMD3<Float>, rotation: simd_quatf, timestamp: TimeInterval, from participant: Participant) async
-    func didReceiveViewingStateUpdate(_ state: SyncMessage.ViewingState, from participant: Participant) async
-    func didReceiveParticipantPointer(position: SIMD3<Float>, participantID: String, from participant: Participant) async
-    func didReceiveAnnotation(_ annotation: SyncMessage.AnnotationMessage, from participant: Participant) async
-    func didReceiveImmersiveSceneUpdate(isActive: Bool, modelIdentifier: ModelIdentifier?, from participant: Participant) async
-    func didReceiveOriginUpdate(position: SIMD3<Float>, rotation: simd_quatf, scale: Float, from participant: Participant) async
+    private func handleLocalParticipantStateChange(_ state: SystemCoordinator.ParticipantState) async {
+        print("[SHAREPLAY] 🔄 Handling local participant state change")
+        logger.info("Local participant state changed: isSpatial=\(state.isSpatial)")
+        
+        // Handle spatial state changes
+        if state.isSpatial {
+            print("[SHAREPLAY] 🌐 Local participant is now in spatial mode")
+            // Update any UI or state related to spatial mode
+        } else {
+            print("[SHAREPLAY] 📱 Local participant is in non-spatial mode")
+        }
+    }
+    
+    private func handleGroupImmersionStyleChange(_ style: ImmersionStyle) async {
+        print("[SHAREPLAY] 🎨 Handling group immersion style change: \(String(describing: style))")
+        logger.info("Group immersion style changed: \(String(describing: style))")
+        
+        // Handle immersion style changes
+        // This could affect how the shared experience is rendered
+    }
+#endif
 }
+#endif

@@ -77,8 +77,8 @@ class SimplePinchState {
     var initialScale: Float?
     var isRightPinching = false
     var isLeftPinching  = false
-    let pinchStartThreshold:  Float = 0.02  // cm
-    let pinchReleaseThreshold: Float = 0.025
+    let pinchStartThreshold:  Float = 0.02  // m (2 cm)
+    let pinchReleaseThreshold: Float = 0.025 // m (2.5 cm)
     
     // Joint tracking stability
     var rightTrackingFailures = 0
@@ -155,6 +155,7 @@ class VisionSceneRenderer: ObservableObject {
     
     var cameraSync: SharePlayCameraSync?
     var sharePlaySessionManager: SharePlaySessionManager?
+    var nearbyParticipantHandler: NearbyParticipantHandler?
     
     private var arTask: Task<Void, Never>?
     private var gestureState = SimplePinchState()
@@ -190,6 +191,7 @@ class VisionSceneRenderer: ObservableObject {
         
         setupCameraSync()
         setupOriginNotifications()
+        setupSpatialParticipantNotifications()
     }
     
     private func setupCameraSync() {
@@ -246,6 +248,30 @@ class VisionSceneRenderer: ObservableObject {
                    let scale = userInfo["scale"] as? Float {
                     self?.applySharedOrigin(position: position, rotation: rotation, scale: scale)
                 }
+            }
+        }
+    }
+    
+    private func setupSpatialParticipantNotifications() {
+        // Listen for spatial participant positioning requests
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("PositionContentForSpatialParticipant"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleSpatialParticipantPositioning(notification)
+            }
+        }
+        
+        // Listen for participant state updates for content positioning
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("ParticipantStatesUpdated"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleParticipantStatesUpdate(notification)
             }
         }
     }
@@ -349,8 +375,13 @@ class VisionSceneRenderer: ObservableObject {
             print("[GESTURE] 📋 Authorization status: \(authStatus)")
 
             // If we don't have the necessary permissions, we can't proceed.
-            guard authStatus[.handTracking] == .allowed, authStatus[.worldSensing] == .allowed else {
-                print("[GESTURE] ⚠️ Required permissions not granted. Cannot start AR session.")
+            let handTrackingStatus = authStatus[.handTracking]
+            let worldSensingStatus = authStatus[.worldSensing]
+            
+            guard handTrackingStatus == .allowed, worldSensingStatus == .allowed else {
+                print("[GESTURE] ⚠️ Required permissions not granted:")
+                print("[GESTURE]   Hand tracking: \(String(describing: handTrackingStatus))")
+                print("[GESTURE]   World sensing: \(String(describing: worldSensingStatus))")
                 self.arTask = nil
                 return
             }
@@ -376,16 +407,28 @@ class VisionSceneRenderer: ObservableObject {
             await withTaskGroup(of: Void.self) { group in
                 // Task 1: Run the ARSession. This task runs for the lifetime of the session.
                 group.addTask {
+                    var consecutiveFailures = 0
+                    let maxFailures = 5
+                    
                     do {
                         print("[GESTURE] 🔧 Starting ARSession with providers…")
-                        while !Task.isCancelled {
-                            try await session.run([world, hands])
-                            print("[GESTURE] ⚠️ ARSession.run returned; waiting for layer to run, then restarting")
-                            // Give the compositor time and avoid tight spinning
-                            try? await Task.sleep(nanoseconds: 500_000_000) // 500 ms backoff
+                        while !Task.isCancelled && consecutiveFailures < maxFailures {
+                            do {
+                                try await session.run([world, hands])
+                                consecutiveFailures = 0 // Reset on success
+                                print("[GESTURE] ⚠️ ARSession.run returned; waiting for layer to run, then restarting")
+                            } catch {
+                                consecutiveFailures += 1
+                                let backoffTime = min(pow(2.0, Double(consecutiveFailures)), 30.0) // Exponential backoff, max 30s
+                                print("[GESTURE] ❌ ARSession failed (attempt \(consecutiveFailures)/\(maxFailures)): \(error)")
+                                print("[GESTURE] ⏱️ Backing off for \(backoffTime) seconds")
+                                try? await Task.sleep(nanoseconds: UInt64(backoffTime * 1_000_000_000))
+                            }
                         }
-                    } catch {
-                        print("[GESTURE] ❌ ARSession failed: \(error)")
+                        
+                        if consecutiveFailures >= maxFailures {
+                            print("[GESTURE] 🛑 ARSession failed \(maxFailures) times consecutively. Stopping attempts.")
+                        }
                     }
                 }
 
@@ -1202,11 +1245,100 @@ class VisionSceneRenderer: ObservableObject {
         }
     }
     
+    // MARK: - Spatial Participant Positioning
+    
+    @MainActor
+    private func handleSpatialParticipantPositioning(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let participantID = userInfo["participantID"] as? String else {
+            print("[SPATIAL] ⚠️ Invalid spatial participant positioning notification")
+            return
+        }
+        
+        print("[SPATIAL] ✨ Handling spatial participant positioning for \(participantID)")
+        
+        // For now, we'll log the positioning request
+        // In a more advanced implementation, you might adjust the camera or content positioning
+        // based on the participant's spatial presence
+        
+        if let pose = userInfo["pose"] {
+            print("[SPATIAL] 📍 Participant \(participantID) pose: \(pose)")
+            
+            // Example: Adjust content positioning based on spatial participants
+            adjustContentForSpatialParticipants()
+        }
+    }
+    
+    @MainActor
+    private func handleParticipantStatesUpdate(_ notification: Notification) {
+        guard let nearbyHandler = nearbyParticipantHandler else { return }
+        
+        let spatialParticipants = nearbyHandler.getSpatialParticipants()
+        let visualizationData = nearbyHandler.getParticipantVisualizationData()
+        
+        print("[SPATIAL] 🔄 Participant states updated: \(spatialParticipants.count) spatial participants")
+        
+        // Log participant positions for debugging
+        for data in visualizationData {
+            print("[SPATIAL]   👤 \(data.id): pos=\(data.position), nearby=\(data.isNearby), spatial=\(data.isSpatial)")
+        }
+        
+        // Adjust content based on spatial participant distribution
+        if !spatialParticipants.isEmpty {
+            adjustContentForSpatialParticipants()
+        }
+    }
+    
+    @MainActor
+    private func adjustContentForSpatialParticipants() {
+        guard let nearbyHandler = nearbyParticipantHandler,
+              let optimalPosition = nearbyHandler.getOptimalContentPosition() else {
+            return
+        }
+        
+        print("[SPATIAL] 🎯 Adjusting content for spatial participants")
+        
+        // Extract position from the optimal content position matrix
+        let optimalPos = SIMD3<Float>(
+            optimalPosition.columns.3.x,
+            optimalPosition.columns.3.y,
+            optimalPosition.columns.3.z
+        )
+        
+        // Subtle adjustment of camera position to account for spatial participants
+        // This creates a more centered viewing experience when multiple people are present
+        let currentPos = camera.position
+        let adjustment = (optimalPos - currentPos) * 0.1 // Gentle adjustment factor
+        
+        // Only apply adjustment if it's not too drastic
+        let adjustmentMagnitude = simd_length(adjustment)
+        if adjustmentMagnitude > 0.01 && adjustmentMagnitude < 2.0 {
+            camera.position = currentPos + adjustment
+            print("[SPATIAL] 📷 Adjusted camera position by \(adjustment) for spatial participants")
+            
+            // Sync the adjusted camera position if SharePlay is active
+            syncCameraState()
+        }
+    }
+    
+    @MainActor
+    func configureSpatialParticipantHandler(_ handler: NearbyParticipantHandler) {
+        print("[SPATIAL] 🔧 Configuring spatial participant handler")
+        nearbyParticipantHandler = handler
+    }
+    
     deinit {
         print("🗑️ VisionSceneRenderer deinit - stopping render loop")
         shouldStopRendering = true
         arTask?.cancel()
-        NotificationCenter.default.removeObserver(self)
+        
+        // Remove all notification observers
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("SharePlayCameraUpdate"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("SetNewOrigin"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("SharePlaySyncOrigin"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ApplySharedOrigin"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("PositionContentForSpatialParticipant"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ParticipantStatesUpdated"), object: nil)
     }
 }
 
