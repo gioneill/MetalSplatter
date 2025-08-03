@@ -154,6 +154,11 @@ if isLoadingModel {
             Toggle("Use Preprocess Compute Shader", isOn: $usePreprocessComputeShader)
                 .frame(width: 500)
                 .padding(.horizontal)
+            Text("Preprocesses splat data on GPU for improved rendering performance. Calculates covariance matrices and decomposes them into rendering axes ahead of time.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: 500)
+                .padding(.horizontal)
         }
         .padding()
         .overlay(

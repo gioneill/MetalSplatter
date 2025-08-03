@@ -48,10 +48,6 @@ struct SampleApp: App {
     }
 
 var immersionStyle: ImmersionStyle {
-        if #available(visionOS 2, *) {
-            .mixed
-        } else {
-            .full
-        }
+        .mixed
     }
 }
