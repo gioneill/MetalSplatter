@@ -347,7 +347,7 @@ class VisionSceneRenderer {
                 camera.position = position
             } else {
                 // Default position for sample box
-                camera.position = SIMD3<Float>(0, 0, -1.5)
+                camera.position = SIMD3<Float>(0, 0, -3.5)
             }
         case .none:
             print("⚠️ No model provided")
