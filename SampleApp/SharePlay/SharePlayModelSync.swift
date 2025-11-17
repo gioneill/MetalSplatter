@@ -171,6 +171,7 @@ enum ModelAvailability {
     case unavailable(String)
 }
 
+@MainActor
 extension SharePlayModelSync: SharePlaySessionDelegate {
     func participantsDidUpdate(nearby: Set<Participant>, remote: Set<Participant>) async {
         // Model sync doesn't need to handle participant updates directly
